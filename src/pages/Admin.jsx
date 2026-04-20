@@ -24,6 +24,7 @@ const initialForm = {
   medium: '',
   size: '',
   status: 'available',
+  category: 'canvas',
 }
 
 function formatPrice(price) {
@@ -145,6 +146,7 @@ function Admin() {
       medium: artwork.medium || '',
       size: artwork.size || '',
       status: artwork.status || 'available',
+      category: artwork.category || 'canvas',
       images: (artwork.images || []).join(', '),
     })
     setEditingId(artwork.id)
@@ -226,8 +228,8 @@ function Admin() {
         <button
           type="button"
           className="btn-secondary"
-          onClick={() => {
-            logoutAdmin()
+          onClick={async () => {
+            await logoutAdmin()
             navigate('/admin/login')
           }}
         >
@@ -283,6 +285,13 @@ function Admin() {
           <select name="status" value={form.status} onChange={onChange}>
             <option value="available">available</option>
             <option value="sold">sold</option>
+          </select>
+        </label>
+        <label>
+          Category
+          <select name="category" value={form.category} onChange={onChange}>
+            <option value="canvas">canvas</option>
+            <option value="sketch">sketch</option>
           </select>
         </label>
         <div className="btn-row">
@@ -360,6 +369,7 @@ function Admin() {
               <p>{formatPrice(artwork.price)}</p>
               <p>Medium: {artwork.medium}</p>
               <p>Size: {artwork.size}</p>
+              <p>Category: {artwork.category || 'canvas'}</p>
               <p>
                 Status:{' '}
                 <span

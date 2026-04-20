@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+import Reveal from '../components/Reveal'
 import usePageMeta from '../hooks/usePageMeta'
 
 function About() {
@@ -8,17 +10,25 @@ function About() {
   })
 
   return (
-    <section className="info-page">
-      <h2 className="section-title">About Archiverse</h2>
-      <p>
-        Archiverse began as a curated space for original works that blend visual
-        storytelling with timeless interiors. We work with artists and collectors
-        who appreciate intent, texture, and character.
-      </p>
-      <p>
-        Our purpose is simple: make high-quality art accessible through a clear,
-        trusted, and transparent buying process with human support at every step.
-      </p>
+    <section className="page-flow">
+      <Reveal className="info-page">
+        <p className="eyebrow">ABOUT</p>
+        <h1 className="section-title">A simple index into the ARCHIVERSE story.</h1>
+        <p>
+          Explore recent works in FEED, background and experience in CV, or get in touch through CONTACT.
+        </p>
+        <div className="about-links">
+          <Link to="/feed" className="text-link-button">
+            FEED
+          </Link>
+          <Link to="/cv" className="text-link-button">
+            CV
+          </Link>
+          <Link to="/contact" className="text-link-button">
+            CONTACT
+          </Link>
+        </div>
+      </Reveal>
     </section>
   )
 }

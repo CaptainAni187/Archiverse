@@ -1,5 +1,6 @@
 import { Link, Navigate } from 'react-router-dom'
 import { useOrderContext } from '../state/useOrderContext'
+import Reveal from '../components/Reveal'
 import usePageMeta from '../hooks/usePageMeta'
 
 function formatPrice(value) {
@@ -22,8 +23,9 @@ function OrderConfirmation() {
   }
 
   return (
-    <section className="confirmation-card">
-      <h2 className="section-title">Payment Confirmed</h2>
+    <Reveal className="confirmation-card">
+      <p className="eyebrow">Confirmation</p>
+      <h1 className="section-title">Payment Confirmed</h1>
       <p>Your advance payment has been received successfully.</p>
       <p>
         <strong>Order ID:</strong> {confirmation.orderId}
@@ -42,10 +44,10 @@ function OrderConfirmation() {
       <p>
         <strong>Remaining on Delivery:</strong> {formatPrice(confirmation.remainingAmount)}
       </p>
-      <Link to="/gallery" className="link-button">
+      <Link to="/gallery" className="text-link-button">
         Back to Gallery
       </Link>
-    </section>
+    </Reveal>
   )
 }
 

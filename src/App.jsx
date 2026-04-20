@@ -1,4 +1,5 @@
-import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import Home from './pages/Home'
 import Gallery from './pages/Gallery'
 import Product from './pages/Product'
@@ -9,79 +10,71 @@ import About from './pages/About'
 import Contact from './pages/Contact'
 import Policies from './pages/Policies'
 import OrderConfirmation from './pages/OrderConfirmation'
+import Canvas from './pages/Canvas'
+import Sketch from './pages/Sketch'
+import Feed from './pages/Feed'
+import CV from './pages/CV'
 import { OrderProvider } from './state/OrderContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import SiteHeader from './components/SiteHeader'
 import './App.css'
+
+function AppLayout() {
+  const location = useLocation()
+  const isCarouselRoute = location.pathname === '/canvas' || location.pathname === '/sketch'
+  const hasOverlayHeader =
+    location.pathname === '/' ||
+    location.pathname === '/canvas' ||
+    location.pathname === '/sketch'
+
+  useEffect(() => {
+    document.body.classList.toggle('is-carousel-route', isCarouselRoute)
+    return () => document.body.classList.remove('is-carousel-route')
+  }, [isCarouselRoute])
+
+  return (
+    <div className={`app-shell ${isCarouselRoute ? 'is-carousel-route' : ''}`.trim()}>
+      <SiteHeader />
+
+      <main
+        className={`page-wrap ${hasOverlayHeader ? 'has-overlay-header' : ''} ${
+          isCarouselRoute ? 'is-carousel-route' : ''
+        }`.trim()}
+      >
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/canvas" element={<Canvas />} />
+          <Route path="/sketch" element={<Sketch />} />
+          <Route path="/feed" element={<Feed />} />
+          <Route path="/cv" element={<CV />} />
+          <Route path="/store" element={<Gallery />} />
+          <Route path="/gallery" element={<Gallery />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/policies" element={<Policies />} />
+          <Route path="/product/:id" element={<Product />} />
+          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/checkout/confirmation" element={<OrderConfirmation />} />
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <Admin />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </main>
+    </div>
+  )
+}
 
 function App() {
   return (
     <BrowserRouter>
       <OrderProvider>
-        <div className="app-shell">
-          <header className="topbar">
-            <div className="brand-block">
-              <p className="brand-kicker">Curated Fine Art</p>
-              <h1>Archiverse</h1>
-            </div>
-            <nav>
-              <NavLink to="/" end className={({ isActive }) => (isActive ? 'active-nav' : '')}>
-                Home
-              </NavLink>
-              <NavLink
-                to="/gallery"
-                className={({ isActive }) => (isActive ? 'active-nav' : '')}
-              >
-                Gallery
-              </NavLink>
-              <NavLink
-                to="/about"
-                className={({ isActive }) => (isActive ? 'active-nav' : '')}
-              >
-                About
-              </NavLink>
-              <NavLink
-                to="/contact"
-                className={({ isActive }) => (isActive ? 'active-nav' : '')}
-              >
-                Contact
-              </NavLink>
-              <NavLink
-                to="/policies"
-                className={({ isActive }) => (isActive ? 'active-nav' : '')}
-              >
-                Policies
-              </NavLink>
-              <NavLink
-                to="/admin"
-                className={({ isActive }) => (isActive ? 'active-nav' : '')}
-              >
-                Admin
-              </NavLink>
-            </nav>
-          </header>
-
-          <main className="page-wrap">
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/gallery" element={<Gallery />} />
-              <Route path="/about" element={<About />} />
-              <Route path="/contact" element={<Contact />} />
-              <Route path="/policies" element={<Policies />} />
-              <Route path="/product/:id" element={<Product />} />
-              <Route path="/checkout" element={<Checkout />} />
-              <Route path="/checkout/confirmation" element={<OrderConfirmation />} />
-              <Route path="/admin/login" element={<AdminLogin />} />
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute>
-                    <Admin />
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
-          </main>
-        </div>
+        <AppLayout />
       </OrderProvider>
     </BrowserRouter>
   )

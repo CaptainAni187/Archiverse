@@ -32,13 +32,28 @@ function buildUrl(table, query = '') {
 export async function supabaseRequest(path, options = {}) {
   ensureSupabaseConfig()
 
-  const response = await fetch(buildUrl(path), {
-    ...options,
-    headers: {
-      ...headers,
-      ...(options.headers || {}),
-    },
-  })
+  const controller = new AbortController()
+  const timeoutMs = 15000
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  let response
+  try {
+    response = await fetch(buildUrl(path), {
+      ...options,
+      signal: options.signal || controller.signal,
+      headers: {
+        ...headers,
+        ...(options.headers || {}),
+      },
+    })
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.')
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     const errorText = await response.text()

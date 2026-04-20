@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useOrderContext } from '../state/useOrderContext'
 import { fetchSingleArtwork } from '../services/artworkService'
 import ImageWithFallback from '../components/ImageWithFallback'
+import Reveal from '../components/Reveal'
 import usePageMeta from '../hooks/usePageMeta'
 
 function formatPrice(price) {
@@ -63,50 +64,63 @@ function Product() {
   }
 
   return (
-    <section className="product-layout">
-      <div>
-        <div className="product-image-wrap">
-          <ImageWithFallback
-            src={activeImage || artwork.images?.[0] || artwork.image}
-            alt={artwork.title}
-            className="product-image"
-          />
-          {artwork.status === 'sold' ? (
-            <span className="badge sold product-badge">Sold Out</span>
-          ) : null}
+    <section className="page-flow">
+      <Reveal className="product-layout">
+        <div className="product-gallery">
+          <div className="product-image-wrap">
+            <ImageWithFallback
+              src={activeImage || artwork.images?.[0] || artwork.image}
+              alt={artwork.title}
+              className="product-image"
+            />
+            {artwork.status === 'sold' ? (
+              <span className="badge sold product-badge">Sold Out</span>
+            ) : null}
+          </div>
+          <div className="thumbnail-row">
+            {(artwork.images || []).map((imageUrl) => (
+              <button
+                key={imageUrl}
+                type="button"
+                className={`thumbnail-btn ${activeImage === imageUrl ? 'active' : ''}`}
+                onClick={() => setActiveImage(imageUrl)}
+              >
+                <ImageWithFallback
+                  src={imageUrl}
+                  alt={`${artwork.title} view`}
+                  className="thumbnail-image"
+                />
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="thumbnail-row">
-          {(artwork.images || []).map((imageUrl) => (
-            <button
-              key={imageUrl}
-              type="button"
-              className={`thumbnail-btn ${activeImage === imageUrl ? 'active' : ''}`}
-              onClick={() => setActiveImage(imageUrl)}
-            >
-              <ImageWithFallback
-                src={imageUrl}
-                alt={`${artwork.title} view`}
-                className="thumbnail-image"
-              />
-            </button>
-          ))}
+        <div className="product-copy">
+          <p className="eyebrow">ORIGINAL ARTWORK</p>
+          <h1 className="section-title">{artwork.title}</h1>
+          <p className="price">{formatPrice(artwork.price)}</p>
+          <div className="product-meta">
+            <p>
+              <span>Medium</span>
+              {artwork.medium}
+            </p>
+            <p>
+              <span>Size</span>
+              {artwork.size}
+            </p>
+          </div>
+          <p>ONLY 1 PIECE AVAILABLE</p>
+          <p>SHIPS IN 7–10 DAYS</p>
+          <p className="product-description">{artwork.description}</p>
+          <button
+            type="button"
+            className="text-link-button action-button"
+            onClick={buyNow}
+            disabled={artwork.status === 'sold'}
+          >
+            {artwork.status === 'sold' ? 'Sold Out' : 'Buy This Work'}
+          </button>
         </div>
-      </div>
-
-      <div>
-        <h2 className="section-title">{artwork.title}</h2>
-        <p className="price">{formatPrice(artwork.price)}</p>
-        <p>
-          <strong>Medium:</strong> {artwork.medium}
-        </p>
-        <p>
-          <strong>Size:</strong> {artwork.size}
-        </p>
-        <p>{artwork.description}</p>
-        <button type="button" onClick={buyNow} disabled={artwork.status === 'sold'}>
-          {artwork.status === 'sold' ? 'Sold Out' : 'Buy Now'}
-        </button>
-      </div>
+      </Reveal>
     </section>
   )
 }

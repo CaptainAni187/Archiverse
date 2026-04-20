@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import ArtworkCard from '../components/ArtworkCard'
 import { fetchArtworks } from '../services/artworkService'
+import Reveal from '../components/Reveal'
+import StoreCard from '../components/StoreCard'
 import usePageMeta from '../hooks/usePageMeta'
 
 function Gallery() {
@@ -42,11 +43,14 @@ function Gallery() {
   }
 
   return (
-    <section>
-      <h2 className="section-title">Gallery</h2>
-      <div className="grid">
+    <section className="page-flow page-with-header-gap">
+      <Reveal className="portfolio-header">
+        <p className="eyebrow">STORE</p>
+        <p className="store-tagline">ORIGINAL WORKS AVAILABLE FOR COLLECTION.</p>
+      </Reveal>
+      <div className="store-grid">
         {artworks.map((artwork) => (
-          <ArtworkCard key={artwork.id} artwork={artwork} />
+          <StoreCard key={artwork.id} artwork={artwork} />
         ))}
       </div>
     </section>

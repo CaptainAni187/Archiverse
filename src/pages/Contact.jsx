@@ -1,3 +1,4 @@
+import Reveal from '../components/Reveal'
 import usePageMeta from '../hooks/usePageMeta'
 
 function Contact() {
@@ -7,21 +8,49 @@ function Contact() {
   })
 
   return (
-    <section className="info-page">
-      <h2 className="section-title">Contact</h2>
-      <p>Email: support@archiverse.art</p>
-      <p>
-        Instagram:{' '}
-        <a href="https://instagram.com/archiverse.art" target="_blank" rel="noreferrer">
-          @archiverse.art
-        </a>
-      </p>
-      <p>
-        WhatsApp:{' '}
-        <a href="https://wa.me/919999999999" target="_blank" rel="noreferrer">
-          +91 99999 99999
-        </a>
-      </p>
+    <section className="page-flow page-with-header-gap">
+      <Reveal className="contact-layout">
+        <div className="contact-copy">
+          <p className="eyebrow">CONTACT</p>
+          <p className="section-copy">
+            FOR CUSTOM PAINTINGS, COMMISSIONS, OR INQUIRIES
+          </p>
+          <div className="contact-links">
+            <a href="https://www.instagram.com/__archiverse_/" target="_blank" rel="noreferrer">
+              INSTAGRAM
+            </a>
+            <a
+              href="https://www.linkedin.com/in/archi-kumari-6a3489371/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              LINKEDIN
+            </a>
+          </div>
+        </div>
+
+        <form className="contact-form" onSubmit={(event) => event.preventDefault()}>
+          <label>
+            NAME
+            <input type="text" name="name" placeholder="Your name" />
+          </label>
+          <label>
+            EMAIL
+            <input type="email" name="email" placeholder="Your email" />
+          </label>
+          <label>
+            SUBJECT
+            <input type="text" name="subject" placeholder="Custom painting / inquiry / message" />
+          </label>
+          <label>
+            MESSAGE
+            <textarea name="message" placeholder="Tell me about the work you have in mind." />
+          </label>
+          <button type="submit" className="text-link-button action-button">
+            SEND INQUIRY
+          </button>
+        </form>
+      </Reveal>
     </section>
   )
 }

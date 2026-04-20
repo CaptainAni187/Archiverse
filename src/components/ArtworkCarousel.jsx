@@ -1,0 +1,152 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import ImageWithFallback from './ImageWithFallback'
+
+function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) {
+  const slides = useMemo(() => {
+    return (images || [])
+      .filter(Boolean)
+      .map((item, index) => ({
+        id: item.id || `${item.title || 'slide'}-${index}`,
+        src: item.src,
+        title: item.title || 'UNTITLED',
+        medium: item.medium || '',
+        year: item.year || '',
+      }))
+      .filter((slide) => Boolean(slide.src))
+  }, [images])
+
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [isHovering, setIsHovering] = useState(false)
+  const stageRef = useRef(null)
+
+  const count = slides.length
+  const safeIndex = count > 0 ? ((activeIndex % count) + count) % count : 0
+  const nextIndex = count > 1 ? (safeIndex + 1) % count : safeIndex
+
+  const goPrevious = () => setActiveIndex((previous) => previous - 1)
+  const goNext = () => setActiveIndex((previous) => previous + 1)
+
+  useEffect(() => {
+    if (count <= 1 || isHovering) {
+      return undefined
+    }
+
+    const timerId = window.setInterval(() => {
+      setActiveIndex((previous) => previous + 1)
+    }, interval)
+
+    return () => window.clearInterval(timerId)
+  }, [count, interval, isHovering])
+
+  useEffect(() => {
+    if (count <= 1) {
+      return undefined
+    }
+
+    const onKeyDown = (event) => {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        goPrevious()
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        goNext()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [count])
+
+  useEffect(() => {
+    const nextSrc = slides[nextIndex]?.src
+    if (!nextSrc) return
+    const img = new Image()
+    img.src = nextSrc
+  }, [nextIndex, slides])
+
+  useEffect(() => {
+    const node = stageRef.current
+    if (!node) return undefined
+
+    const onEnter = () => setIsHovering(true)
+    const onLeave = () => setIsHovering(false)
+    node.addEventListener('mouseenter', onEnter)
+    node.addEventListener('mouseleave', onLeave)
+    return () => {
+      node.removeEventListener('mouseenter', onEnter)
+      node.removeEventListener('mouseleave', onLeave)
+    }
+  }, [])
+
+  if (slides.length === 0) {
+    return (
+      <section className="artwork-carousel">
+        <div className="artwork-carousel__stage full-bleed">
+          <div className="carousel-placeholder" />
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="artwork-carousel">
+      <div ref={stageRef} className="artwork-carousel__stage full-bleed">
+        <div
+          className="artwork-carousel__track"
+          style={{ transform: `translateX(-${safeIndex * 100}vw)` }}
+        >
+          {slides.map((slide, index) => (
+            <div
+              key={slide.id}
+              className="artwork-carousel__slide"
+              aria-hidden={index !== safeIndex}
+            >
+              <ImageWithFallback
+                src={slide.src}
+                alt={slide.title}
+                className="artwork-carousel__image"
+                loading={index === safeIndex ? 'eager' : 'lazy'}
+                fetchPriority={index === safeIndex ? 'high' : undefined}
+              />
+
+              <div
+                className={`artwork-carousel__overlay artwork-carousel__overlay--${overlayPosition}`}
+              >
+                <p className="artwork-carousel__overlay-line">{slide.title}</p>
+                {slide.medium ? (
+                  <p className="artwork-carousel__overlay-line">{slide.medium}</p>
+                ) : null}
+                {slide.year ? <p className="artwork-carousel__overlay-line">{slide.year}</p> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {count > 1 ? (
+          <>
+            <button
+              type="button"
+              className="artwork-carousel__arrow artwork-carousel__arrow--left"
+              onClick={goPrevious}
+              aria-label="Previous artwork"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="artwork-carousel__arrow artwork-carousel__arrow--right"
+              onClick={goNext}
+              aria-label="Next artwork"
+            >
+              →
+            </button>
+          </>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
+export default ArtworkCarousel

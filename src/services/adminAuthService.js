@@ -1,22 +1,98 @@
-const AUTH_KEY = 'archiverse_admin_auth'
-const ADMIN_EMAIL = 'admin@archiverse.local'
-const ADMIN_PASSWORD = 'archiverse123'
+const ADMIN_TOKEN_KEY = 'archiverse_admin_token'
 
-export function loginAdmin(email, password) {
-  const isValid = email === ADMIN_EMAIL && password === ADMIN_PASSWORD
+async function parseAuthResponse(response) {
+  const rawText = await response.text()
+  let payload = null
 
-  if (!isValid) {
-    return false
+  try {
+    payload = rawText ? JSON.parse(rawText) : null
+  } catch {
+    throw new Error(`Server error (${response.status}). Admin API may be unavailable.`)
   }
 
-  localStorage.setItem(AUTH_KEY, 'true')
+  if (!payload || !response.ok || payload.success === false) {
+    throw new Error(payload?.message || `Server error (${response.status}).`)
+  }
+
+  return payload
+}
+
+export async function loginAdmin(email, password) {
+  const response = await fetch('/api/admin/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ email, password }),
+  })
+
+  const payload = await parseAuthResponse(response)
+  if (!payload.token) {
+    throw new Error('Server error')
+  }
+  localStorage.setItem(ADMIN_TOKEN_KEY, payload.token)
   return true
 }
 
-export function logoutAdmin() {
-  localStorage.removeItem(AUTH_KEY)
+export async function logoutAdmin() {
+  const token = localStorage.getItem(ADMIN_TOKEN_KEY)
+  const response = await fetch('/api/admin/logout', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token || ''}`,
+    },
+  })
+
+  await parseAuthResponse(response)
+  localStorage.removeItem(ADMIN_TOKEN_KEY)
+  return true
 }
 
-export function isAdminAuthenticated() {
-  return localStorage.getItem(AUTH_KEY) === 'true'
+export async function isAdminAuthenticated() {
+  try {
+    const token = localStorage.getItem(ADMIN_TOKEN_KEY)
+    if (!token) {
+      return false
+    }
+
+    const response = await fetch('/api/admin/session', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    const payload = await parseAuthResponse(response)
+    return payload.authenticated === true
+  } catch {
+    localStorage.removeItem(ADMIN_TOKEN_KEY)
+    return false
+  }
+}
+
+export async function requestAdminPasswordReset(email) {
+  const response = await fetch('/api/admin/forgot-password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email }),
+  })
+
+  return parseAuthResponse(response)
+}
+
+export async function resetAdminPassword(email, token, newPassword) {
+  const response = await fetch('/api/admin/reset-password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      email,
+      token,
+      new_password: newPassword,
+    }),
+  })
+
+  return parseAuthResponse(response)
 }

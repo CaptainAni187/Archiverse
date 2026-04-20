@@ -1,4 +1,3 @@
-import { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ImageWithFallback from './ImageWithFallback'
 
@@ -6,12 +5,12 @@ function formatPrice(price) {
   return `Rs. ${Number(price).toLocaleString()}`
 }
 
-function ArtworkCard({ artwork }) {
+function StoreCard({ artwork }) {
   const navigate = useNavigate()
 
   return (
     <article
-      className="card"
+      className="store-card"
       onClick={() => navigate(`/product/${artwork.id}`)}
       role="button"
       tabIndex={0}
@@ -21,23 +20,17 @@ function ArtworkCard({ artwork }) {
         }
       }}
     >
-      <div className="card-media">
+      <div className="store-card-media">
         <ImageWithFallback
           src={artwork.images?.[0] || artwork.image}
           alt={artwork.title}
-          className="card-image"
+          className="store-card-image"
         />
-        <div className="card-overlay">
-          <div className="card-overlay-copy">
-            <h3>{artwork.title}</h3>
-            <p>{formatPrice(artwork.price)}</p>
-          </div>
-        </div>
         {artwork.status === 'sold' ? (
-          <span className="badge sold card-badge">Sold Out</span>
+          <span className="badge sold card-badge">SOLD OUT</span>
         ) : null}
       </div>
-      <div className="card-body">
+      <div className="store-card-body">
         <h3>{artwork.title}</h3>
         <p>{formatPrice(artwork.price)}</p>
       </div>
@@ -45,4 +38,4 @@ function ArtworkCard({ artwork }) {
   )
 }
 
-export default memo(ArtworkCard)
+export default StoreCard

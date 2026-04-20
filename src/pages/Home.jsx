@@ -1,11 +1,15 @@
-import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { fetchArtworks } from '../services/artworkService'
-import ArtworkCard from '../components/ArtworkCard'
+import FullscreenCarousel from '../components/FullscreenCarousel'
+import PortfolioCard from '../components/PortfolioCard'
+import ImageWithFallback from '../components/ImageWithFallback'
+import { Link } from 'react-router-dom'
 import usePageMeta from '../hooks/usePageMeta'
+import { getCanvasArtworks, getSketchArtworks } from '../utils/artworkCategories'
 
 function Home() {
-  const [featured, setFeatured] = useState([])
+  const [canvasWorks, setCanvasWorks] = useState([])
+  const [sketchWorks, setSketchWorks] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -19,7 +23,8 @@ function Home() {
     async function loadFeatured() {
       try {
         const artworks = await fetchArtworks()
-        setFeatured(artworks.slice(0, 3))
+        setCanvasWorks(getCanvasArtworks(artworks).slice(0, 4))
+        setSketchWorks(getSketchArtworks(artworks).slice(0, 2))
       } catch (error) {
         setErrorMessage(`Could not load featured artworks: ${error.message}`)
       } finally {
@@ -31,37 +36,84 @@ function Home() {
   }, [])
 
   return (
-    <section className="home-stack">
-      <article className="hero-card">
-        <p className="brand-kicker">Premium Collection</p>
-        <h2 className="section-title">Collect Art That Holds Presence</h2>
-        <p>
-          Archiverse curates paintings and visual works for homes, studios, and
-          collectors who value character and craft.
-        </p>
-        <div className="btn-row">
-          <Link to="/gallery" className="link-button">
-            Explore Gallery
-          </Link>
-          <Link to="/policies" className="link-button secondary-link">
-            View Policies
-          </Link>
-        </div>
-      </article>
+    <section className="page-flow">
+      {loading ? <p className="status-message">Loading artworks...</p> : null}
+      {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
+      {!loading && !errorMessage ? (
+        <>
+          <FullscreenCarousel
+            artworks={[...canvasWorks, ...sketchWorks]}
+            autoSlide
+            interval={5000}
+            showMeta={false}
+            overlayContent={() => (
+              <div className="hero-overlay-copy">
+                <p>CURATED WORKS</p>
+                <h1>ARCHIVERSE</h1>
+                <p>
+                  SELECTED PAINTINGS, SKETCHES, AND STUDIES PRESENTED WITH QUIET
+                  PRECISION
+                </p>
+                <Link to="/canvas" className="hero-enter-link">
+                  ENTER CANVAS
+                </Link>
+              </div>
+            )}
+          />
 
-      <div>
-        <h3 className="section-title">Featured Artworks</h3>
-        {loading ? <p className="status-message">Loading featured artworks...</p> : null}
-        {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
-        {!loading && !errorMessage && featured.length === 0 ? (
-          <p className="status-message">No featured artworks found.</p>
-        ) : null}
-        <div className="grid">
-          {featured.map((artwork) => (
-            <ArtworkCard key={artwork.id} artwork={artwork} />
-          ))}
-        </div>
-      </div>
+          <section className="section-block">
+            <p className="eyebrow">FEATURED WORKS</p>
+            <div className="portfolio-grid">
+              {canvasWorks.slice(0, 6).map((artwork) => (
+                <PortfolioCard key={artwork.id} artwork={artwork} />
+              ))}
+            </div>
+          </section>
+
+          <section className="section-block">
+            <p className="eyebrow">ABOUT</p>
+            <p className="section-copy">
+              ARCHIVERSE PRESENTS ORIGINAL WORKS WITH A QUIET, IMAGE-FIRST
+              STRUCTURE FOR COLLECTORS AND CURIOUS VIEWERS.
+            </p>
+          </section>
+
+          <section className="section-block process-grid">
+            <div>
+              <p className="eyebrow">STEP 01</p>
+              <p className="section-copy">DISCOVER A WORK</p>
+            </div>
+            <div>
+              <p className="eyebrow">STEP 02</p>
+              <p className="section-copy">RESERVE WITH 50% ADVANCE</p>
+            </div>
+            <div>
+              <p className="eyebrow">STEP 03</p>
+              <p className="section-copy">CONFIRMATION AND PREP</p>
+            </div>
+            <div>
+              <p className="eyebrow">STEP 04</p>
+              <p className="section-copy">DELIVERY AND FINAL PAYMENT</p>
+            </div>
+          </section>
+
+          <section className="section-block">
+            <p className="eyebrow">FEED PREVIEW</p>
+            <div className="feed-preview-grid">
+              {[...canvasWorks, ...sketchWorks]
+                .slice(0, 6)
+                .map((artwork) => (
+                  <ImageWithFallback
+                    key={artwork.id}
+                    src={artwork.images?.[0] || artwork.image}
+                    alt={artwork.title}
+                    className="feed-preview-image"
+                  />
+                ))}
+            </div>
+          </section>
+        </>
+      ) : null}
     </section>
   )
 }

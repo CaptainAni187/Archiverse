@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { loginAdmin } from '../services/adminAuthService'
+import {
+  loginAdmin,
+  resetAdminPassword,
+  requestAdminPasswordReset,
+} from '../services/adminAuthService'
 import usePageMeta from '../hooks/usePageMeta'
 
 function AdminLogin() {
@@ -13,25 +17,84 @@ function AdminLogin() {
   const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetToken, setResetToken] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [resetMessage, setResetMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isResetSubmitting, setIsResetSubmitting] = useState(false)
 
-  const onSubmit = (event) => {
+  const onSubmit = async (event) => {
     event.preventDefault()
+    setErrorMessage('')
+    setIsSubmitting(true)
 
-    const isValid = loginAdmin(email.trim(), password)
-    if (!isValid) {
-      setErrorMessage('Invalid admin credentials.')
-      return
+    try {
+      await loginAdmin(email.trim(), password)
+      const redirectTo = location.state?.from || '/admin'
+      navigate(redirectTo, { replace: true })
+    } catch (error) {
+      setErrorMessage(
+        error.message === 'Invalid admin credentials.'
+          ? 'Invalid credentials'
+          : 'Server error',
+      )
+    } finally {
+      setIsSubmitting(false)
     }
+  }
 
-    const redirectTo = location.state?.from || '/admin'
-    navigate(redirectTo, { replace: true })
+  const onForgotPassword = async (event) => {
+    event.preventDefault()
+    setResetMessage('')
+    setErrorMessage('')
+    setIsResetSubmitting(true)
+
+    try {
+      const response = await requestAdminPasswordReset(resetEmail.trim())
+      setResetMessage(
+        `${response.message} Temporary token: ${response.resetToken || 'not generated'}`,
+      )
+    } catch (error) {
+      setErrorMessage(
+        error.message === 'Email not found.' ? 'Invalid credentials' : 'Server error',
+      )
+    } finally {
+      setIsResetSubmitting(false)
+    }
+  }
+
+  const onResetPassword = async (event) => {
+    event.preventDefault()
+    setResetMessage('')
+    setErrorMessage('')
+    setIsResetSubmitting(true)
+
+    try {
+      const response = await resetAdminPassword(
+        resetEmail.trim(),
+        resetToken.trim(),
+        newPassword,
+      )
+      setResetMessage(response.message)
+      setResetToken('')
+      setNewPassword('')
+    } catch (error) {
+      setErrorMessage(
+        error.message === 'Reset token is invalid or expired.'
+          ? 'Invalid credentials'
+          : 'Server error',
+      )
+    } finally {
+      setIsResetSubmitting(false)
+    }
   }
 
   return (
     <section className="auth-card">
       <h2 className="section-title">Admin Login</h2>
-      <p>Use demo credentials: admin@archiverse.local / archiverse123</p>
+      <p>Sign in to access the ARCHIVERSE dashboard.</p>
 
       <form className="admin-form" onSubmit={onSubmit}>
         <label>
@@ -52,10 +115,51 @@ function AdminLogin() {
             required
           />
         </label>
-        <button type="submit">Login</button>
+        <button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Signing In...' : 'Login'}
+        </button>
       </form>
 
       {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
+
+      <form className="admin-form" onSubmit={onForgotPassword}>
+        <label>
+          Forgot Password (admin email)
+          <input
+            type="email"
+            value={resetEmail}
+            onChange={(event) => setResetEmail(event.target.value)}
+            required
+          />
+        </label>
+        <button type="submit" disabled={isResetSubmitting}>
+          {isResetSubmitting ? 'Checking...' : 'Request Reset Token'}
+        </button>
+      </form>
+      <form className="admin-form" onSubmit={onResetPassword}>
+        <label>
+          Reset Token
+          <input
+            type="text"
+            value={resetToken}
+            onChange={(event) => setResetToken(event.target.value)}
+            required
+          />
+        </label>
+        <label>
+          New Password
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            required
+          />
+        </label>
+        <button type="submit" disabled={isResetSubmitting}>
+          {isResetSubmitting ? 'Updating...' : 'Reset Password'}
+        </button>
+      </form>
+      {resetMessage ? <p className="status-message success">{resetMessage}</p> : null}
     </section>
   )
 }

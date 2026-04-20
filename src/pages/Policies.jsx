@@ -1,3 +1,4 @@
+import Reveal from '../components/Reveal'
 import usePageMeta from '../hooks/usePageMeta'
 
 function Policies() {
@@ -8,8 +9,9 @@ function Policies() {
   })
 
   return (
-    <section className="info-page">
-      <h2 className="section-title">Policies</h2>
+    <Reveal className="info-page">
+      <p className="eyebrow">Policies</p>
+      <h1 className="section-title">A transparent purchase process from reservation to delivery.</h1>
 
       <h3>Payment Policy</h3>
       <p>
@@ -29,7 +31,7 @@ function Policies() {
         dispatch. After dispatch, refund eligibility depends on damage or
         fulfilment issues verified by support.
       </p>
-    </section>
+    </Reveal>
   )
 }
 

@@ -16,6 +16,9 @@ Backend:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `RAZORPAY_KEY_ID`
 - `RAZORPAY_KEY_SECRET`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `ADMIN_SESSION_SECRET`
 
 Optional notifications:
 
@@ -54,3 +57,23 @@ Serverless routes live in `/api`:
 3. Deploy to Vercel so the `/api` routes run server-side.
 4. Confirm that successful checkout creates an order with a readable order code.
 5. Optionally configure webhook or Resend email notifications.
+
+## Local development (admin + api routes)
+
+Admin login uses `/api/admin/*` serverless routes. Those routes do **not** run under plain `vite`.
+
+Run locally with Vercel so `/api` works:
+
+- `npm run dev:vercel`
+
+## Admin Credentials
+
+Admin access is backed by server-side session cookies.
+
+Change credentials safely through environment variables:
+
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `ADMIN_SESSION_SECRET`
+
+Do not hardcode production admin credentials in frontend files.

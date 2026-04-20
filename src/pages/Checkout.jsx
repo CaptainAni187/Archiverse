@@ -12,6 +12,7 @@ import {
   verifyPayment,
 } from '../services/backendApiService'
 import { findOrderByPaymentId } from '../services/orderService'
+import Reveal from '../components/Reveal'
 import usePageMeta from '../hooks/usePageMeta'
 
 function formatPrice(price) {
@@ -132,9 +133,11 @@ function Checkout() {
 
   if (!selectedProduct) {
     return (
-      <section>
+      <section className="page-flow">
         <p className="status-message">No artwork selected yet.</p>
-        <Link to="/gallery">Back to gallery</Link>
+        <Link to="/gallery" className="text-link-button">
+          Back to Gallery
+        </Link>
       </section>
     )
   }
@@ -258,6 +261,14 @@ function Checkout() {
       }
 
       const paymentOrder = await createPaymentOrder(selectedProduct.id)
+      if (!paymentOrder?.id || !paymentOrder?.amount) {
+        throw new Error('Unable to initialize payment. Please try again.')
+      }
+
+      if (!Number.isInteger(paymentOrder.amount)) {
+        throw new Error('Payment amount is invalid. Please contact support.')
+      }
+
       const paymentResult = await new Promise((resolve, reject) => {
         openRazorpayCheckout({
           amountInPaise: paymentOrder.amount,
@@ -307,6 +318,7 @@ function Checkout() {
 
       finalizeSuccessfulOrder(createdOrder, 'Payment successful. Order confirmed.')
     } catch (error) {
+      console.error('Checkout payment/order failure:', error)
       const hasPendingPayment = Boolean(
         sessionStorage.getItem(PENDING_CHECKOUT_STORAGE_KEY),
       )
@@ -328,76 +340,95 @@ function Checkout() {
   }
 
   return (
-    <section className="checkout-layout">
-      <div className="checkout-product">
-        <h2 className="section-title">Checkout</h2>
-        <ImageWithFallback
-          src={selectedProduct.images?.[0] || selectedProduct.image}
-          alt={selectedProduct.title}
-        />
-        <h3>{selectedProduct.title}</h3>
-        <p>Total: {formatPrice(price)}</p>
-        <p>Advance (50%): {formatPrice(advanceAmount)}</p>
-        <p>Remaining 50% payable on delivery.</p>
-      </div>
+    <section className="page-flow">
+      <Reveal className="checkout-layout">
+        <div className="checkout-product">
+          <p className="eyebrow">CHECKOUT</p>
+          <h1 className="section-title">COMPLETE YOUR ADVANCE PAYMENT</h1>
+          <p className="checkout-note">
+            A 50% ADVANCE SECURES THE WORK
+          </p>
+          <ImageWithFallback
+            src={selectedProduct.images?.[0] || selectedProduct.image}
+            alt={selectedProduct.title}
+            className="checkout-artwork-image"
+          />
+          <div className="checkout-summary">
+            <h3>{selectedProduct.title}</h3>
+            <p>Total: {formatPrice(price)}</p>
+            <p className="checkout-advance">Advance Today: {formatPrice(advanceAmount)}</p>
+            <p>Remaining on delivery: {formatPrice(advanceAmount)}</p>
+          </div>
+        </div>
 
-      <form className="checkout-form" onSubmit={onSubmit}>
-        <label>
-          Name
-          <input name="name" value={form.name} onChange={onChange} required />
-        </label>
-        <label>
-          Phone
-          <input
-            name="phone"
-            value={form.phone}
-            onChange={onChange}
-            placeholder="+91XXXXXXXXXX"
-            required
-          />
-        </label>
-        <label>
-          Address
-          <textarea
-            name="address"
-            value={form.address}
-            onChange={onChange}
-            required
-          />
-        </label>
-        <label>
-          Email
-          <input
-            name="email"
-            type="email"
-            value={form.email}
-            onChange={onChange}
-            required
-          />
-        </label>
+        <form className="checkout-form" onSubmit={onSubmit}>
+          <div className="form-intro">
+            <p className="eyebrow">Collector Details</p>
+            <p className="section-copy">
+              We’ll use these details for your payment confirmation and delivery coordination.
+            </p>
+          </div>
+          <label>
+            Name
+            <input name="name" value={form.name} onChange={onChange} required />
+          </label>
+          <label>
+            Phone
+            <input
+              name="phone"
+              value={form.phone}
+              onChange={onChange}
+              placeholder="+91XXXXXXXXXX"
+              required
+            />
+          </label>
+          <label>
+            Address
+            <textarea
+              name="address"
+              value={form.address}
+              onChange={onChange}
+              required
+            />
+          </label>
+          <label>
+            Email
+            <input
+              name="email"
+              type="email"
+              value={form.email}
+              onChange={onChange}
+              required
+            />
+          </label>
 
-        <button type="submit" disabled={isSubmitting || Boolean(successMessage)}>
-          {isSubmitting ? 'Processing Payment...' : 'Pay 50% Advance'}
-        </button>
-        {recoveryMessage ? <p className="status-message">{recoveryMessage}</p> : null}
-        {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
-        {successMessage ? <p className="status-message success">{successMessage}</p> : null}
-        {recoveryMessage ? (
           <button
-            type="button"
-            className="btn-secondary"
-            onClick={recoverPendingCheckout}
-            disabled={isSubmitting}
+            type="submit"
+            className="text-link-button action-button"
+            disabled={isSubmitting || Boolean(successMessage)}
           >
-            Resume Confirmation
+            {isSubmitting ? 'Processing Payment...' : 'Pay 50% Advance'}
           </button>
-        ) : null}
-        {successMessage ? (
-          <Link to="/checkout/confirmation" className="link-button">
-            View Confirmation
-          </Link>
-        ) : null}
-      </form>
+          {recoveryMessage ? <p className="status-message">{recoveryMessage}</p> : null}
+          {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
+          {successMessage ? <p className="status-message success">{successMessage}</p> : null}
+          {recoveryMessage ? (
+            <button
+              type="button"
+              className="text-link-button action-button secondary-action"
+              onClick={recoverPendingCheckout}
+              disabled={isSubmitting}
+            >
+              Resume Confirmation
+            </button>
+          ) : null}
+          {successMessage ? (
+            <Link to="/checkout/confirmation" className="text-link-button">
+              View Confirmation
+            </Link>
+          ) : null}
+        </form>
+      </Reveal>
     </section>
   )
 }

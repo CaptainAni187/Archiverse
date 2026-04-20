@@ -1,9 +1,15 @@
 async function parseApiResponse(response) {
   const text = await response.text()
-  const payload = text ? JSON.parse(text) : {}
+  let payload = {}
+
+  try {
+    payload = text ? JSON.parse(text) : {}
+  } catch {
+    throw new Error('Server returned an invalid response.')
+  }
 
   if (!response.ok || payload.success === false) {
-    throw new Error(payload.message || 'Request failed.')
+    throw new Error(payload.message || `Request failed (${response.status}).`)
   }
 
   return payload
@@ -22,7 +28,7 @@ async function backendRequest(path, options = {}) {
 }
 
 export async function createPaymentOrder(productId) {
-  const payload = await backendRequest('/api/payment-order', {
+  const payload = await backendRequest('/api/create-order', {
     method: 'POST',
     body: JSON.stringify({ product_id: productId }),
   })
