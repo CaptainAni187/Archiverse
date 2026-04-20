@@ -176,10 +176,32 @@
   letter-spacing: 0.18em;
   font-size: 0.8rem;
   transition: color 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 0 8px;
 }
 
 .social-links a:hover {
   color: var(--accent-color);
+}
+
+.social-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  color: currentColor;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .page-wrap {
@@ -196,7 +218,7 @@
 }
 
 .page-flow.page-with-header-gap {
-  padding-top: 28px;
+  padding-top: 44px;
 }
 
 .page-flow.fullscreen-page {
@@ -458,7 +480,7 @@
 
 .store-tagline {
   margin: 0;
-  color: #c6a86b;
+  color: var(--text-color);
   font-family: var(--site-font);
   letter-spacing: 0.2em;
   font-size: 0.92rem;

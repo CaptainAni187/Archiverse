@@ -30,7 +30,7 @@ function Feed() {
   }, [])
 
   return (
-    <section className="page-flow">
+    <section className="page-flow page-with-header-gap">
       <p className="eyebrow">FEED</p>
 
       {loading ? <p className="status-message">Loading FEED…</p> : null}

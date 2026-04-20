@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ImageWithFallback from './ImageWithFallback'
 
 function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) {
@@ -17,7 +17,6 @@ function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) 
 
   const [activeIndex, setActiveIndex] = useState(0)
   const [isHovering, setIsHovering] = useState(false)
-  const stageRef = useRef(null)
 
   const count = slides.length
   const safeIndex = count > 0 ? ((activeIndex % count) + count) % count : 0
@@ -66,20 +65,6 @@ function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) 
     img.src = nextSrc
   }, [nextIndex, slides])
 
-  useEffect(() => {
-    const node = stageRef.current
-    if (!node) return undefined
-
-    const onEnter = () => setIsHovering(true)
-    const onLeave = () => setIsHovering(false)
-    node.addEventListener('mouseenter', onEnter)
-    node.addEventListener('mouseleave', onLeave)
-    return () => {
-      node.removeEventListener('mouseenter', onEnter)
-      node.removeEventListener('mouseleave', onLeave)
-    }
-  }, [])
-
   if (slides.length === 0) {
     return (
       <section className="artwork-carousel">
@@ -92,7 +77,7 @@ function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) 
 
   return (
     <section className="artwork-carousel">
-      <div ref={stageRef} className="artwork-carousel__stage full-bleed">
+      <div className="artwork-carousel__stage full-bleed">
         <div
           className="artwork-carousel__track"
           style={{ transform: `translateX(-${safeIndex * 100}vw)` }}
@@ -130,6 +115,10 @@ function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) 
               type="button"
               className="artwork-carousel__arrow artwork-carousel__arrow--left"
               onClick={goPrevious}
+              onMouseEnter={() => setIsHovering(true)}
+              onMouseLeave={() => setIsHovering(false)}
+              onFocus={() => setIsHovering(true)}
+              onBlur={() => setIsHovering(false)}
               aria-label="Previous artwork"
             >
               ←
@@ -138,6 +127,10 @@ function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) 
               type="button"
               className="artwork-carousel__arrow artwork-carousel__arrow--right"
               onClick={goNext}
+              onMouseEnter={() => setIsHovering(true)}
+              onMouseLeave={() => setIsHovering(false)}
+              onFocus={() => setIsHovering(true)}
+              onBlur={() => setIsHovering(false)}
               aria-label="Next artwork"
             >
               →

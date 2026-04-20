@@ -36,9 +36,7 @@ function AdminLogin() {
       navigate(redirectTo, { replace: true })
     } catch (error) {
       setErrorMessage(
-        error.message === 'Invalid admin credentials.'
-          ? 'Invalid credentials'
-          : 'Server error',
+        error.message === 'Invalid admin credentials.' ? 'Invalid credentials' : error.message,
       )
     } finally {
       setIsSubmitting(false)
@@ -57,9 +55,7 @@ function AdminLogin() {
         `${response.message} Temporary token: ${response.resetToken || 'not generated'}`,
       )
     } catch (error) {
-      setErrorMessage(
-        error.message === 'Email not found.' ? 'Invalid credentials' : 'Server error',
-      )
+      setErrorMessage(error.message === 'Email not found.' ? 'Invalid credentials' : error.message)
     } finally {
       setIsResetSubmitting(false)
     }
@@ -82,9 +78,7 @@ function AdminLogin() {
       setNewPassword('')
     } catch (error) {
       setErrorMessage(
-        error.message === 'Reset token is invalid or expired.'
-          ? 'Invalid credentials'
-          : 'Server error',
+        error.message === 'Reset token is invalid or expired.' ? 'Invalid credentials' : error.message,
       )
     } finally {
       setIsResetSubmitting(false)

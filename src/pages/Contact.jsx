@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import Reveal from '../components/Reveal'
 import usePageMeta from '../hooks/usePageMeta'
 
@@ -6,6 +7,49 @@ function Contact() {
     title: 'Contact | Archiverse',
     description: 'Connect with Archiverse for artwork inquiries and support.',
   })
+
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    subject: '',
+    message: '',
+  })
+  const [status, setStatus] = useState({ type: '', message: '' })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const onChange = (event) => {
+    const { name, value } = event.target
+    setForm((previous) => ({ ...previous, [name]: value }))
+  }
+
+  const onSubmit = async (event) => {
+    event.preventDefault()
+    setStatus({ type: '', message: '' })
+    setIsSubmitting(true)
+
+    try {
+      const response = await fetch('/api/inquiries', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(form),
+      })
+
+      const text = await response.text()
+      const payload = text ? JSON.parse(text) : null
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.message || 'Unable to send inquiry.')
+      }
+
+      setStatus({ type: 'success', message: 'INQUIRY SENT.' })
+      setForm({ name: '', email: '', subject: '', message: '' })
+    } catch (error) {
+      setStatus({ type: 'error', message: String(error.message || 'Unable to send inquiry.') })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <section className="page-flow page-with-header-gap">
@@ -29,26 +73,56 @@ function Contact() {
           </div>
         </div>
 
-        <form className="contact-form" onSubmit={(event) => event.preventDefault()}>
+        <form className="contact-form" onSubmit={onSubmit}>
           <label>
             NAME
-            <input type="text" name="name" placeholder="Your name" />
+            <input
+              type="text"
+              name="name"
+              placeholder="Your name"
+              value={form.name}
+              onChange={onChange}
+              required
+            />
           </label>
           <label>
             EMAIL
-            <input type="email" name="email" placeholder="Your email" />
+            <input
+              type="email"
+              name="email"
+              placeholder="Your email"
+              value={form.email}
+              onChange={onChange}
+              required
+            />
           </label>
           <label>
             SUBJECT
-            <input type="text" name="subject" placeholder="Custom painting / inquiry / message" />
+            <input
+              type="text"
+              name="subject"
+              placeholder="Custom painting / inquiry / message"
+              value={form.subject}
+              onChange={onChange}
+              required
+            />
           </label>
           <label>
             MESSAGE
-            <textarea name="message" placeholder="Tell me about the work you have in mind." />
+            <textarea
+              name="message"
+              placeholder="Tell me about the work you have in mind."
+              value={form.message}
+              onChange={onChange}
+              required
+            />
           </label>
           <button type="submit" className="text-link-button action-button">
-            SEND INQUIRY
+            {isSubmitting ? 'SENDING…' : 'SEND INQUIRY'}
           </button>
+          {status.message ? (
+            <p className={`status-message ${status.type}`.trim()}>{status.message}</p>
+          ) : null}
         </form>
       </Reveal>
     </section>

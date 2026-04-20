@@ -64,7 +64,7 @@ function Product() {
   }
 
   return (
-    <section className="page-flow">
+    <section className="page-flow page-with-header-gap">
       <Reveal className="product-layout">
         <div className="product-gallery">
           <div className="product-image-wrap">

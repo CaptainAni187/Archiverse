@@ -340,7 +340,7 @@ function Checkout() {
   }
 
   return (
-    <section className="page-flow">
+    <section className="page-flow page-with-header-gap">
       <Reveal className="checkout-layout">
         <div className="checkout-product">
           <p className="eyebrow">CHECKOUT</p>
