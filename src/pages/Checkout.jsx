@@ -11,9 +11,13 @@ import {
   createPaymentOrder,
   verifyPayment,
 } from '../services/backendApiService'
+import { trackAnalyticsEvent } from '../services/analyticsService'
 import { findOrderByPaymentId } from '../services/orderService'
 import Reveal from '../components/Reveal'
+import ErrorState from '../components/ErrorState'
 import usePageMeta from '../hooks/usePageMeta'
+import { getDeliveryDetails } from '../utils/delivery'
+import { getUserFriendlyError } from '../utils/userErrors'
 
 function formatPrice(price) {
   return `Rs. ${Number(price).toLocaleString()}`
@@ -34,9 +38,16 @@ function buildConfirmation(order) {
     orderId: order.order_code || `Order #${order.id}`,
     orderCode: order.order_code || null,
     productTitle: order.product_title,
+    totalAmount: Number(order.total_amount),
     advanceAmount: order.advance_amount,
     remainingAmount: Number(order.total_amount) - Number(order.advance_amount),
     paymentId: order.razorpay_payment_id || null,
+    paymentStatus: order.payment_status || 'advance_paid',
+    paymentVerifiedAt: order.payment_verified_at || null,
+    customerName: order.customer_name || '',
+    customerEmail: order.customer_email || '',
+    customerPhone: order.customer_phone || '',
+    customerAddress: order.customer_address || '',
   }
 }
 
@@ -55,6 +66,8 @@ function Checkout() {
   const [errorMessage, setErrorMessage] = useState('')
   const [isRazorpayReady, setIsRazorpayReady] = useState(false)
   const [recoveryMessage, setRecoveryMessage] = useState('')
+  const [paymentSetupMessage, setPaymentSetupMessage] = useState('')
+  const [paymentSetupRetryKey, setPaymentSetupRetryKey] = useState(0)
 
   usePageMeta({
     title: 'Checkout | Archiverse',
@@ -69,23 +82,48 @@ function Checkout() {
   }, [selectedProduct, location.state, setSelectedProduct])
 
   useEffect(() => {
+    if (!selectedProduct) {
+      return
+    }
+
+    void trackAnalyticsEvent('checkout_started', {
+      artwork_id: selectedProduct.id,
+      title: selectedProduct.title,
+      price: Number(selectedProduct.price),
+    })
+  }, [selectedProduct])
+
+  useEffect(() => {
     let isActive = true
+    setPaymentSetupMessage('')
+    setIsRazorpayReady(false)
+
     loadRazorpayScript()
       .then((loaded) => {
         if (isActive) {
-          setIsRazorpayReady(loaded)
+          if (!loaded) {
+            setPaymentSetupMessage(
+              'The payment service is taking longer than expected to load. Please retry setup.',
+            )
+            return
+          }
+
+          setIsRazorpayReady(true)
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (isActive) {
           setIsRazorpayReady(false)
+          setPaymentSetupMessage(
+            getUserFriendlyError(error, 'We could not start the payment service.'),
+          )
         }
       })
 
     return () => {
       isActive = false
     }
-  }, [])
+  }, [paymentSetupRetryKey])
 
   useEffect(() => {
     let isActive = true
@@ -115,10 +153,13 @@ function Checkout() {
         setOrderDetails(existingOrder)
         setOrderConfirmation(confirmation)
         navigate('/checkout/confirmation', { replace: true })
-      } catch {
+      } catch (error) {
         if (isActive) {
           setRecoveryMessage(
-            'We found a completed payment awaiting confirmation. Use Resume Confirmation to finish recovering the order.',
+            getUserFriendlyError(
+              error,
+              'We found a payment that still needs confirmation. Use Resume Confirmation to continue.',
+            ),
           )
         }
       }
@@ -142,8 +183,13 @@ function Checkout() {
     )
   }
 
-  const price = Number(selectedProduct.price)
-  const advanceAmount = price / 2
+  const deliveryDetails = getDeliveryDetails(selectedProduct)
+  const subtotal = deliveryDetails.subtotal
+  const shippingCost = deliveryDetails.shippingCost
+  const totalAmount = deliveryDetails.totalAmount
+  const advanceAmount = deliveryDetails.advanceAmount
+  const remainingAmount = deliveryDetails.remainingAmount
+  const deliveryEstimate = deliveryDetails.deliveryEstimate
 
   const onChange = (event) => {
     const { name, value } = event.target
@@ -163,6 +209,14 @@ function Checkout() {
     setOrderConfirmation(confirmation)
     setSuccessMessage(successCopy)
     setForm(initialForm)
+    void trackAnalyticsEvent('order_completed', {
+      order_id: createdOrder.id,
+      order_code: createdOrder.order_code || null,
+      product_id: createdOrder.product_id || null,
+      payment_status: createdOrder.payment_status,
+      advance_amount: Number(createdOrder.advance_amount),
+      total_amount: Number(createdOrder.total_amount),
+    })
     navigate('/checkout/confirmation')
   }
 
@@ -188,8 +242,13 @@ function Checkout() {
         )
         finalizeSuccessfulOrder(existingOrder, 'Payment already confirmed. Restoring your order.')
         return
-      } catch {
-        // Continue to verification and order creation retry.
+      } catch (error) {
+        setRecoveryMessage(
+          getUserFriendlyError(
+            error,
+            'We still need to finish confirming your payment. Trying recovery now.',
+          ),
+        )
       }
 
       const verificationResult = await verifyPayment(pendingCheckout.payment)
@@ -211,8 +270,10 @@ function Checkout() {
       finalizeSuccessfulOrder(createdOrder, 'Payment confirmed and your order has been restored.')
     } catch (error) {
       setErrorMessage(
-        error.message ||
+        getUserFriendlyError(
+          error,
           'We could not recover your payment confirmation yet. Please contact support with your payment ID.',
+        ),
       )
       setRecoveryMessage(
         'Your payment may already be captured. Please avoid paying again until confirmation is recovered.',
@@ -325,8 +386,8 @@ function Checkout() {
 
       setErrorMessage(
         hasPendingPayment
-          ? `Payment received, but confirmation is still pending: ${error.message}`
-          : `Could not place order: ${error.message}`,
+          ? `Payment received, but confirmation is still pending: ${getUserFriendlyError(error, 'Please resume confirmation to finish your order.')}`
+          : getUserFriendlyError(error, 'We could not place your order. Please try again.'),
       )
 
       if (hasPendingPayment) {
@@ -349,15 +410,21 @@ function Checkout() {
             A 50% ADVANCE SECURES THE WORK
           </p>
           <ImageWithFallback
-            src={selectedProduct.images?.[0] || selectedProduct.image}
+            src={selectedProduct.image}
             alt={selectedProduct.title}
             className="checkout-artwork-image"
+            loading="eager"
+            sizes="(max-width: 980px) 100vw, 45vw"
+            maxWidth={1200}
           />
           <div className="checkout-summary">
             <h3>{selectedProduct.title}</h3>
-            <p>Total: {formatPrice(price)}</p>
+            <p>Artwork subtotal: {formatPrice(subtotal)}</p>
+            <p>Shipping: {formatPrice(shippingCost)}</p>
+            <p>Total: {formatPrice(totalAmount)}</p>
             <p className="checkout-advance">Advance Today: {formatPrice(advanceAmount)}</p>
-            <p>Remaining on delivery: {formatPrice(advanceAmount)}</p>
+            <p>Remaining on delivery: {formatPrice(remainingAmount)}</p>
+            <p>Estimated delivery: {deliveryEstimate}</p>
           </div>
         </div>
 
@@ -368,6 +435,13 @@ function Checkout() {
               We’ll use these details for your payment confirmation and delivery coordination.
             </p>
           </div>
+          {paymentSetupMessage ? (
+            <ErrorState
+              message={paymentSetupMessage}
+              retryLabel="Retry Payment Setup"
+              onRetry={() => setPaymentSetupRetryKey((value) => value + 1)}
+            />
+          ) : null}
           <label>
             Name
             <input name="name" value={form.name} onChange={onChange} required />

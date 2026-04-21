@@ -1,32 +1,7 @@
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
 import { getBackendConfig } from './_lib/env.js'
+import { sendResendEmail } from './_lib/notifications.js'
 import { supabaseAdminRequest } from './_lib/supabaseAdmin.js'
-
-async function sendResendEmail({ resendApiKey, fromEmail, to, subject, html }) {
-  if (!resendApiKey || !fromEmail || !to) {
-    return { delivered: false, skipped: true }
-  }
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [to],
-      subject,
-      html,
-    }),
-  })
-
-  if (!response.ok) {
-    return { delivered: false, skipped: false }
-  }
-
-  return { delivered: true, skipped: false }
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -95,4 +70,3 @@ export default async function handler(req, res) {
     })
   }
 }
-

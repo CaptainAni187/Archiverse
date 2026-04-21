@@ -94,6 +94,8 @@ function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) 
                 className="artwork-carousel__image"
                 loading={index === safeIndex ? 'eager' : 'lazy'}
                 fetchPriority={index === safeIndex ? 'high' : undefined}
+                sizes="100vw"
+                maxWidth={2200}
               />
 
               <div

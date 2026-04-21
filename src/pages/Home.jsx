@@ -1,17 +1,24 @@
 import { useEffect, useState } from 'react'
 import { fetchArtworks } from '../services/artworkService'
+import { fetchTestimonials } from '../services/testimonialService'
 import FullscreenCarousel from '../components/FullscreenCarousel'
 import PortfolioCard from '../components/PortfolioCard'
 import ImageWithFallback from '../components/ImageWithFallback'
 import { Link } from 'react-router-dom'
 import usePageMeta from '../hooks/usePageMeta'
 import { getCanvasArtworks, getSketchArtworks } from '../utils/artworkCategories'
+import ErrorState from '../components/ErrorState'
+import { SkeletonGrid } from '../components/SkeletonLoader'
+import { getUserFriendlyError } from '../utils/userErrors'
 
 function Home() {
   const [canvasWorks, setCanvasWorks] = useState([])
   const [sketchWorks, setSketchWorks] = useState([])
+  const [testimonials, setTestimonials] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+  const [noticeMessage, setNoticeMessage] = useState('')
+  const [retryKey, setRetryKey] = useState(0)
 
   usePageMeta({
     title: 'Archiverse | Curated Fine Art',
@@ -21,24 +28,56 @@ function Home() {
 
   useEffect(() => {
     async function loadFeatured() {
+      setLoading(true)
+      setNoticeMessage('')
       try {
         const artworks = await fetchArtworks()
+        let reviewResponse = []
+
+        try {
+          reviewResponse = await fetchTestimonials()
+        } catch (error) {
+          setNoticeMessage(
+            getUserFriendlyError(error, 'Reviews are unavailable right now.'),
+          )
+        }
+
         setCanvasWorks(getCanvasArtworks(artworks).slice(0, 4))
         setSketchWorks(getSketchArtworks(artworks).slice(0, 2))
+        setTestimonials(reviewResponse)
+        setErrorMessage('')
       } catch (error) {
-        setErrorMessage(`Could not load featured artworks: ${error.message}`)
+        setErrorMessage(
+          getUserFriendlyError(error, 'We could not load the home page right now.'),
+        )
       } finally {
         setLoading(false)
       }
     }
 
     loadFeatured()
-  }, [])
+  }, [retryKey])
 
   return (
     <section className="page-flow">
-      {loading ? <p className="status-message">Loading artworks...</p> : null}
-      {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
+      {loading ? (
+        <>
+          <div className="carousel-stage full-bleed" aria-hidden="true">
+            <div className="carousel-placeholder skeleton-block" />
+          </div>
+          <section className="section-block">
+            <p className="eyebrow">FEATURED WORKS</p>
+            <SkeletonGrid className="portfolio-grid" count={4} />
+          </section>
+        </>
+      ) : null}
+      {errorMessage ? (
+        <ErrorState
+          message={errorMessage}
+          onRetry={() => setRetryKey((value) => value + 1)}
+        />
+      ) : null}
+      {noticeMessage && !errorMessage ? <p className="status-message">{noticeMessage}</p> : null}
       {!loading && !errorMessage ? (
         <>
           <FullscreenCarousel
@@ -78,6 +117,26 @@ function Home() {
             </p>
           </section>
 
+          {testimonials.length > 0 ? (
+            <section className="section-block">
+              <p className="eyebrow">REVIEWS</p>
+              <div className="testimonial-grid">
+                {testimonials.map((testimonial) => (
+                  <article key={testimonial.id} className="testimonial-card">
+                    <p className="testimonial-rating">
+                      {'*'.repeat(testimonial.rating)}
+                    </p>
+                    <p className="section-copy">"{testimonial.review_text}"</p>
+                    <p>
+                      <strong>{testimonial.customer_name}</strong>
+                      {testimonial.location ? ` / ${testimonial.location}` : ''}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <section className="section-block process-grid">
             <div>
               <p className="eyebrow">STEP 01</p>
@@ -105,9 +164,11 @@ function Home() {
                 .map((artwork) => (
                   <ImageWithFallback
                     key={artwork.id}
-                    src={artwork.images?.[0] || artwork.image}
+                    src={artwork.image}
                     alt={artwork.title}
                     className="feed-preview-image"
+                    sizes="(max-width: 720px) 50vw, 33vw"
+                    maxWidth={720}
                   />
                 ))}
             </div>

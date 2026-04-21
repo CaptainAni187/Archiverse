@@ -1,17 +1,19 @@
-import bcrypt from 'bcryptjs'
+import './loadEnv.js'
+import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import crypto from 'node:crypto'
+import { unauthorized } from './http.js'
 
-const SESSION_EXPIRES_IN = '8h'
+const SESSION_EXPIRES_IN = '1h'
 const resetTokens = new Map()
 let runtimePasswordHash = null
 
 function getSessionSecret() {
-  return process.env.ADMIN_SESSION_SECRET || 'archiverse-admin-session-secret'
+  return process.env.ADMIN_SESSION_SECRET || ''
 }
 
 function getAdminEmail() {
-  return process.env.ADMIN_EMAIL || 'kanimesh187@gmail.com'
+  return String(process.env.ADMIN_EMAIL || '').trim().toLowerCase()
 }
 
 function getPasswordHash() {
@@ -19,21 +21,23 @@ function getPasswordHash() {
     return runtimePasswordHash
   }
 
-  const configuredHash = process.env.ADMIN_PASSWORD_HASH
-  if (configuredHash) {
-    return configuredHash
-  }
-
-  const plainPassword = process.env.ADMIN_PASSWORD || 'Animesh@187'
-  return bcrypt.hashSync(plainPassword, 10)
+  const plainPassword = process.env.ADMIN_PASSWORD || ''
+  return plainPassword ? bcrypt.hashSync(plainPassword, 10) : ''
 }
 
 export async function validateAdminCredentials(email, password) {
-  if (!email || !password || email !== getAdminEmail()) {
+  const normalizedInputEmail = String(email || '').trim().toLowerCase()
+
+  if (!normalizedInputEmail || !password || normalizedInputEmail !== getAdminEmail()) {
     return false
   }
 
-  return bcrypt.compare(password, getPasswordHash())
+  const passwordHash = getPasswordHash()
+  if (!passwordHash) {
+    return false
+  }
+
+  return bcrypt.compare(password, passwordHash)
 }
 
 export function createAdminToken() {
@@ -52,6 +56,31 @@ export function getAdminSessionFromToken(token) {
   } catch {
     return null
   }
+}
+
+export function getBearerToken(req) {
+  const authHeader = req.headers.authorization || ''
+  return authHeader.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length).trim()
+    : ''
+}
+
+export function requireAdminAuth(req, res) {
+  const token = getBearerToken(req)
+
+  if (!token) {
+    unauthorized(res, 'Admin authentication required.')
+    return null
+  }
+
+  const session = getAdminSessionFromToken(token)
+
+  if (!session || session.role !== 'admin' || session.email !== getAdminEmail()) {
+    unauthorized(res, 'Invalid or expired admin token.')
+    return null
+  }
+
+  return session
 }
 
 export function createPasswordResetToken(email) {

@@ -3,11 +3,14 @@ import ArtworkCarousel from '../components/ArtworkCarousel'
 import { fetchArtworks } from '../services/artworkService'
 import { getCanvasArtworks } from '../utils/artworkCategories'
 import usePageMeta from '../hooks/usePageMeta'
+import ErrorState from '../components/ErrorState'
+import { getUserFriendlyError } from '../utils/userErrors'
 
 function Canvas() {
   const [artworks, setArtworks] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+  const [retryKey, setRetryKey] = useState(0)
 
   usePageMeta({
     title: 'CANVAS | ARCHIVERSE',
@@ -16,21 +19,25 @@ function Canvas() {
 
   useEffect(() => {
     async function loadArtworks() {
+      setLoading(true)
       try {
         const response = await fetchArtworks()
         setArtworks(getCanvasArtworks(response))
+        setErrorMessage('')
       } catch (error) {
-        setErrorMessage(`Could not load CANVAS works: ${error.message}`)
+        setErrorMessage(
+          getUserFriendlyError(error, 'We could not load canvas works right now.'),
+        )
       } finally {
         setLoading(false)
       }
     }
 
     loadArtworks()
-  }, [])
+  }, [retryKey])
 
   const canvasImages = artworks.map((artwork) => ({
-    src: artwork.images?.[0] || artwork.image,
+    src: artwork.image,
     title: artwork.title,
     medium: artwork.medium,
     year: artwork.year,
@@ -39,7 +46,12 @@ function Canvas() {
   return (
     <section className="page-flow fullscreen-page">
       {loading ? <p className="status-message">Loading CANVAS works...</p> : null}
-      {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
+      {errorMessage ? (
+        <ErrorState
+          message={errorMessage}
+          onRetry={() => setRetryKey((value) => value + 1)}
+        />
+      ) : null}
       {!loading && !errorMessage && artworks.length === 0 ? (
         <p className="status-message">No CANVAS works available yet.</p>
       ) : null}

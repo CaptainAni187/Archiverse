@@ -1,7 +1,9 @@
 import { getBackendConfig, requireConfigValues } from './_lib/env.js'
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
+import { createPaymentLog } from './_lib/paymentLogs.js'
 import { createRazorpayOrder } from './_lib/razorpay.js'
 import { fetchArtworkById } from './_lib/supabaseAdmin.js'
+import { getDeliveryDetails } from '../src/utils/delivery.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -28,15 +30,16 @@ export default async function handler(req, res) {
       })
     }
 
-    if (artwork.status === 'sold') {
+    if (artwork.status === 'sold' || Number(artwork.quantity) <= 0) {
       return sendJson(res, 409, {
         success: false,
         message: 'This artwork is no longer available.',
       })
     }
 
-    const totalAmount = Number(artwork.price)
-    const advanceAmount = Number((totalAmount / 2).toFixed(2))
+    const deliveryDetails = getDeliveryDetails(artwork)
+    const totalAmount = deliveryDetails.totalAmount
+    const advanceAmount = deliveryDetails.advanceAmount
     const amountInPaise = Math.round(advanceAmount * 100)
     const config = getBackendConfig()
 
@@ -56,6 +59,18 @@ export default async function handler(req, res) {
       razorpayKeySecret: config.razorpayKeySecret,
     })
 
+    await createPaymentLog({
+      event_type: 'payment_order_created',
+      status: 'created',
+      razorpay_order_id: razorpayOrder.id,
+      details: {
+        product_id: artwork.id,
+        product_title: artwork.title,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+      },
+    })
+
     return sendJson(res, 200, {
       success: true,
       order: {
@@ -66,6 +81,8 @@ export default async function handler(req, res) {
       product: {
         id: artwork.id,
         title: artwork.title,
+        shippingCost: deliveryDetails.shippingCost,
+        deliveryEstimate: deliveryDetails.deliveryEstimate,
         totalAmount,
         advanceAmount,
       },

@@ -23,9 +23,11 @@ function ArtworkCard({ artwork }) {
     >
       <div className="card-media">
         <ImageWithFallback
-          src={artwork.images?.[0] || artwork.image}
+          src={artwork.image}
           alt={artwork.title}
           className="card-image"
+          sizes="(max-width: 720px) 100vw, (max-width: 980px) 50vw, 33vw"
+          maxWidth={960}
         />
         <div className="card-overlay">
           <div className="card-overlay-copy">

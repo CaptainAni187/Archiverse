@@ -1,5 +1,9 @@
 const ADMIN_TOKEN_KEY = 'archiverse_admin_token'
 
+export function getAdminToken() {
+  return localStorage.getItem(ADMIN_TOKEN_KEY)
+}
+
 async function parseAuthResponse(response) {
   const rawText = await response.text()
   let payload = null
@@ -36,7 +40,7 @@ export async function loginAdmin(email, password) {
 }
 
 export async function logoutAdmin() {
-  const token = localStorage.getItem(ADMIN_TOKEN_KEY)
+  const token = getAdminToken()
   const response = await fetch('/api/admin/logout', {
     method: 'POST',
     headers: {
@@ -51,12 +55,12 @@ export async function logoutAdmin() {
 
 export async function isAdminAuthenticated() {
   try {
-    const token = localStorage.getItem(ADMIN_TOKEN_KEY)
+    const token = getAdminToken()
     if (!token) {
       return false
     }
 
-    const response = await fetch('/api/admin/session', {
+    const response = await fetch('/api/admin/me', {
       headers: {
         Authorization: `Bearer ${token}`,
       },

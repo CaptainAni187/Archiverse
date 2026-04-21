@@ -1,19 +1,40 @@
+import { requireAdminAuth } from './_lib/adminSession.js'
 import { getBackendConfig } from './_lib/env.js'
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
 import { notifyAdmin, notifyCustomer } from './_lib/notifications.js'
+import {
+  getOrderStatusTimestampPatch,
+  getOrderStatusTransitionError,
+} from './_lib/orderLifecycle.js'
+import { createPaymentLog } from './_lib/paymentLogs.js'
 import { fetchRazorpayPayment, verifyRazorpaySignature } from './_lib/razorpay.js'
 import {
   fetchArtworkById,
   fetchLatestOrderCodes,
+  fetchOrderById,
   fetchOrderByPaymentId,
+  fetchOrders,
+  decrementArtworkStock,
   supabaseAdminRequest,
+  updateOrderById,
 } from './_lib/supabaseAdmin.js'
+import {
+  orderCreationSchema,
+  orderUpdateSchema,
+  paymentVerificationSchema,
+  sendValidationError,
+  validateWithSchema,
+} from './_lib/validation.js'
+import { getDeliveryDetails } from '../src/utils/delivery.js'
 
 function normalizeOrder(order) {
   return {
     ...order,
     total_amount: Number(order.total_amount),
     advance_amount: Number(order.advance_amount),
+    processing_at: order.processing_at || null,
+    shipped_at: order.shipped_at || null,
+    delivered_at: order.delivered_at || null,
   }
 }
 
@@ -68,38 +89,30 @@ async function createOrderRecord(payload) {
 
 async function handleCreateOrder(req, res) {
   const body = await readJson(req)
-  const productId = Number(body.product_id)
-  const customerName = body.customer_name?.trim()
-  const customerPhone = body.customer_phone?.trim()
-  const customerAddress = body.customer_address?.trim()
-  const customerEmail = body.customer_email?.trim()
-  const razorpayPaymentId = body.razorpay_payment_id?.trim()
-  const razorpayOrderId = body.razorpay_order_id?.trim()
-  const razorpaySignature = body.razorpay_signature?.trim()
-
-  if (!customerName || !customerPhone || !customerAddress || !customerEmail) {
-    return sendJson(res, 400, {
-      success: false,
-      message: 'Customer name, phone, address, and email are required.',
-    })
-  }
-
-  if (!Number.isInteger(productId) || productId <= 0) {
-    return sendJson(res, 400, {
-      success: false,
-      message: 'A valid product_id is required.',
-    })
-  }
-
-  if (!razorpayPaymentId || !razorpayOrderId || !razorpaySignature) {
-    return sendJson(res, 400, {
-      success: false,
-      message: 'Verified payment credentials are required to create an order.',
-    })
-  }
+  const validatedBody = validateWithSchema(orderCreationSchema, body)
+  validateWithSchema(paymentVerificationSchema, validatedBody)
+  const productId = validatedBody.product_id
+  const customerName = validatedBody.customer_name
+  const customerPhone = validatedBody.customer_phone
+  const customerAddress = validatedBody.customer_address
+  const customerEmail = validatedBody.customer_email
+  const razorpayPaymentId = validatedBody.razorpay_payment_id
+  const razorpayOrderId = validatedBody.razorpay_order_id
+  const razorpaySignature = validatedBody.razorpay_signature
 
   const existingOrder = await fetchOrderByPaymentId(razorpayPaymentId)
   if (existingOrder) {
+    await createPaymentLog({
+      event_type: 'create_order',
+      status: 'duplicate_payment_id',
+      razorpay_payment_id: razorpayPaymentId,
+      razorpay_order_id: razorpayOrderId,
+      order_id: existingOrder.id,
+      details: {
+        message: 'Duplicate payment ID reused during order creation.',
+      },
+    })
+
     return sendJson(res, 200, {
       success: true,
       duplicated: true,
@@ -115,7 +128,7 @@ async function handleCreateOrder(req, res) {
     })
   }
 
-  if (artwork.status === 'sold') {
+  if (artwork.status === 'sold' || Number(artwork.quantity) <= 0) {
     return sendJson(res, 409, {
       success: false,
       message: 'This artwork has already been sold.',
@@ -134,6 +147,16 @@ async function handleCreateOrder(req, res) {
   })
 
   if (!signatureValid) {
+    await createPaymentLog({
+      event_type: 'create_order',
+      status: 'invalid_signature',
+      razorpay_payment_id: razorpayPaymentId,
+      razorpay_order_id: razorpayOrderId,
+      details: {
+        product_id: productId,
+      },
+    })
+
     return sendJson(res, 400, {
       success: false,
       message: 'Payment signature verification failed during order creation.',
@@ -147,17 +170,41 @@ async function handleCreateOrder(req, res) {
   })
 
   if (!['authorized', 'captured'].includes(payment.status)) {
+    await createPaymentLog({
+      event_type: 'create_order',
+      status: 'unverified_payment_state',
+      razorpay_payment_id: razorpayPaymentId,
+      razorpay_order_id: razorpayOrderId,
+      details: {
+        payment_status: payment.status || 'unknown',
+      },
+    })
+
     return sendJson(res, 400, {
       success: false,
       message: `Payment is not in a verified state. Current status: ${payment.status}.`,
     })
   }
 
-  const totalAmount = Number(artwork.price)
-  const advanceAmount = Number((totalAmount / 2).toFixed(2))
+  const deliveryDetails = getDeliveryDetails(artwork)
+  const totalAmount = deliveryDetails.totalAmount
+  const advanceAmount = deliveryDetails.advanceAmount
   const expectedAmountInPaise = Math.round(advanceAmount * 100)
 
   if (Number(payment.amount) !== expectedAmountInPaise || payment.order_id !== razorpayOrderId) {
+    await createPaymentLog({
+      event_type: 'create_order',
+      status: 'payment_mismatch',
+      razorpay_payment_id: razorpayPaymentId,
+      razorpay_order_id: razorpayOrderId,
+      details: {
+        expected_amount: expectedAmountInPaise,
+        received_amount: Number(payment.amount),
+        payment_order_id: payment.order_id || null,
+        expected_order_id: razorpayOrderId,
+      },
+    })
+
     return sendJson(res, 400, {
       success: false,
       message: 'Payment details do not match the selected artwork.',
@@ -182,8 +229,21 @@ async function handleCreateOrder(req, res) {
   })
 
   const order = normalizeOrder(createdOrder)
+  await decrementArtworkStock(artwork)
 
-  await Promise.allSettled([
+  await createPaymentLog({
+    event_type: 'create_order',
+    status: 'order_created',
+    razorpay_payment_id: razorpayPaymentId,
+    razorpay_order_id: razorpayOrderId,
+    order_id: order.id,
+    details: {
+      product_id: artwork.id,
+      product_title: artwork.title,
+    },
+  })
+
+  const [adminNotification, customerNotification] = await Promise.allSettled([
     notifyAdmin(order, config),
     notifyCustomer(order, config),
   ])
@@ -192,6 +252,16 @@ async function handleCreateOrder(req, res) {
     success: true,
     duplicated: false,
     order,
+    notifications: {
+      admin:
+        adminNotification.status === 'fulfilled'
+          ? adminNotification.value
+          : { emailStatus: { delivered: false, skipped: false } },
+      customer:
+        customerNotification.status === 'fulfilled'
+          ? customerNotification.value
+          : { delivered: false, skipped: false },
+    },
   })
 }
 
@@ -199,9 +269,14 @@ async function handleLookupOrder(req, res) {
   const paymentId = String(req.query.payment_id || '').trim()
 
   if (!paymentId) {
-    return sendJson(res, 400, {
-      success: false,
-      message: 'payment_id query parameter is required.',
+    if (!requireAdminAuth(req, res)) {
+      return null
+    }
+
+    const orders = await fetchOrders()
+    return sendJson(res, 200, {
+      success: true,
+      orders: orders.map(normalizeOrder),
     })
   }
 
@@ -220,6 +295,53 @@ async function handleLookupOrder(req, res) {
   })
 }
 
+async function handleUpdateOrder(req, res) {
+  if (!requireAdminAuth(req, res)) {
+    return null
+  }
+
+  const orderId = Number(req.query.id)
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return sendJson(res, 400, {
+      success: false,
+      message: 'A valid order id is required.',
+    })
+  }
+
+  const body = await readJson(req)
+  const payload = validateWithSchema(orderUpdateSchema, body)
+  const existingOrder = await fetchOrderById(orderId)
+
+  if (!existingOrder) {
+    return sendJson(res, 404, {
+      success: false,
+      message: 'Order not found.',
+    })
+  }
+
+  const transitionError = getOrderStatusTransitionError(
+    existingOrder.payment_status,
+    payload.payment_status,
+  )
+
+  if (transitionError) {
+    return sendJson(res, 409, {
+      success: false,
+      message: transitionError,
+    })
+  }
+
+  const updatedOrder = await updateOrderById(
+    orderId,
+    getOrderStatusTimestampPatch(existingOrder.payment_status, payload.payment_status),
+  )
+
+  return sendJson(res, 200, {
+    success: true,
+    order: normalizeOrder(updatedOrder),
+  })
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
@@ -230,8 +352,16 @@ export default async function handler(req, res) {
       return await handleLookupOrder(req, res)
     }
 
-    return methodNotAllowed(res, ['GET', 'POST'])
+    if (req.method === 'PUT') {
+      return await handleUpdateOrder(req, res)
+    }
+
+    return methodNotAllowed(res, ['GET', 'POST', 'PUT'])
   } catch (error) {
+    if (error.validationIssues) {
+      return sendValidationError(res, error.validationIssues)
+    }
+
     return sendJson(res, error.status || 500, {
       success: false,
       message: error.message || 'Unable to process the order request.',

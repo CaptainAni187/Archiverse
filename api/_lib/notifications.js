@@ -16,7 +16,20 @@ function maskPhone(phone) {
   return `${phone.slice(0, 2)}${'*'.repeat(Math.max(phone.length - 4, 1))}${phone.slice(-2)}`
 }
 
-async function sendResendEmail({ resendApiKey, fromEmail, to, subject, html }) {
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+function formatCurrency(value) {
+  return `Rs. ${Number(value || 0).toLocaleString()}`
+}
+
+export async function sendResendEmail({ resendApiKey, fromEmail, to, subject, html }) {
   if (!resendApiKey || !fromEmail || !to) {
     return { delivered: false, skipped: true }
   }
@@ -35,11 +48,27 @@ async function sendResendEmail({ resendApiKey, fromEmail, to, subject, html }) {
     }),
   })
 
+  const payload = await response.json().catch(() => ({}))
+
   if (!response.ok) {
-    return { delivered: false, skipped: false }
+    return {
+      delivered: false,
+      skipped: false,
+      provider: 'resend',
+      error: payload?.message || payload?.error || 'Resend email delivery failed.',
+    }
   }
 
-  return { delivered: true, skipped: false }
+  return {
+    delivered: true,
+    skipped: false,
+    provider: 'resend',
+    id: payload?.id || null,
+  }
+}
+
+function getAdminNotificationEmail(config) {
+  return config.adminNotificationEmail || process.env.ADMIN_EMAIL || ''
 }
 
 export async function notifyAdmin(order, config) {
@@ -84,18 +113,18 @@ export async function notifyAdmin(order, config) {
   const emailPromise = sendResendEmail({
     resendApiKey: config.resendApiKey,
     fromEmail: config.fromEmail,
-    to: config.adminNotificationEmail,
+    to: getAdminNotificationEmail(config),
     subject: `New Archiverse order ${order.order_code}`,
     html: `
       <h2>New order received</h2>
-      <p><strong>Order:</strong> ${order.order_code}</p>
-      <p><strong>Artwork:</strong> ${order.product_title}</p>
-      <p><strong>Advance Paid:</strong> Rs. ${Number(order.advance_amount).toLocaleString()}</p>
-      <p><strong>Total:</strong> Rs. ${Number(order.total_amount).toLocaleString()}</p>
-      <p><strong>Customer:</strong> ${order.customer_name}</p>
-      <p><strong>Email:</strong> ${order.customer_email}</p>
-      <p><strong>Phone:</strong> ${order.customer_phone}</p>
-      <p><strong>Address:</strong> ${order.customer_address}</p>
+      <p><strong>Order:</strong> ${escapeHtml(order.order_code)}</p>
+      <p><strong>Artwork:</strong> ${escapeHtml(order.product_title)}</p>
+      <p><strong>Advance Paid:</strong> ${formatCurrency(order.advance_amount)}</p>
+      <p><strong>Total:</strong> ${formatCurrency(order.total_amount)}</p>
+      <p><strong>Customer:</strong> ${escapeHtml(order.customer_name)}</p>
+      <p><strong>Email:</strong> ${escapeHtml(order.customer_email)}</p>
+      <p><strong>Phone:</strong> ${escapeHtml(order.customer_phone)}</p>
+      <p><strong>Address:</strong> ${escapeHtml(order.customer_address)}</p>
     `,
   }).catch(() => ({ delivered: false, skipped: false }))
 
@@ -112,12 +141,60 @@ export async function notifyCustomer(order, config) {
     html: `
       <h2>Payment confirmed</h2>
       <p>Thank you for your Archiverse order.</p>
-      <p><strong>Order:</strong> ${order.order_code}</p>
-      <p><strong>Artwork:</strong> ${order.product_title}</p>
-      <p><strong>Advance Paid:</strong> Rs. ${Number(order.advance_amount).toLocaleString()}</p>
-      <p><strong>Remaining on Delivery:</strong> Rs. ${(
-        Number(order.total_amount) - Number(order.advance_amount)
-      ).toLocaleString()}</p>
+      <p><strong>Order:</strong> ${escapeHtml(order.order_code)}</p>
+      <p><strong>Artwork:</strong> ${escapeHtml(order.product_title)}</p>
+      <p><strong>Advance Paid:</strong> ${formatCurrency(order.advance_amount)}</p>
+      <p><strong>Remaining on Delivery:</strong> ${formatCurrency(
+        Number(order.total_amount) - Number(order.advance_amount),
+      )}</p>
+      <p>You can track your order here: /order/${encodeURIComponent(order.order_code || '')}</p>
     `,
   }).catch(() => ({ delivered: false, skipped: false }))
+}
+
+export async function notifyCommissionRequest(commission, config) {
+  const adminEmail = sendResendEmail({
+    resendApiKey: config.resendApiKey,
+    fromEmail: config.fromEmail,
+    to: getAdminNotificationEmail(config),
+    subject: `New Archiverse commission request #${commission.id}`,
+    html: `
+      <h2>New commission request</h2>
+      <p><strong>Request:</strong> #${escapeHtml(commission.id)}</p>
+      <p><strong>Customer:</strong> ${escapeHtml(commission.name)}</p>
+      <p><strong>Email:</strong> ${escapeHtml(commission.email)}</p>
+      <p><strong>Phone:</strong> ${escapeHtml(commission.phone)}</p>
+      <p><strong>Artwork Type:</strong> ${escapeHtml(commission.artwork_type)}</p>
+      <p><strong>Size:</strong> ${escapeHtml(commission.size)}</p>
+      <p><strong>Deadline:</strong> ${escapeHtml(commission.deadline)}</p>
+      <p><strong>Description:</strong></p>
+      <p>${escapeHtml(commission.description).replaceAll('\n', '<br/>')}</p>
+    `,
+  }).catch(() => ({ delivered: false, skipped: false }))
+
+  const customerEmail = sendResendEmail({
+    resendApiKey: config.resendApiKey,
+    fromEmail: config.fromEmail,
+    to: commission.email,
+    subject: 'Your Archiverse commission request was received',
+    html: `
+      <h2>Commission request received</h2>
+      <p>Thank you for sharing your idea with Archiverse.</p>
+      <p><strong>Request:</strong> #${escapeHtml(commission.id)}</p>
+      <p><strong>Artwork Type:</strong> ${escapeHtml(commission.artwork_type)}</p>
+      <p><strong>Size:</strong> ${escapeHtml(commission.size)}</p>
+      <p><strong>Deadline:</strong> ${escapeHtml(commission.deadline)}</p>
+      <p>We will review your request and reply with the next steps.</p>
+    `,
+  }).catch(() => ({ delivered: false, skipped: false }))
+
+  const [adminEmailStatus, customerEmailStatus] = await Promise.all([
+    adminEmail,
+    customerEmail,
+  ])
+
+  return {
+    adminEmailStatus,
+    customerEmailStatus,
+  }
 }

@@ -1,6 +1,8 @@
 export const ORDER_STATUSES = [
-  'advance_paid',
   'pending',
-  'fully_paid',
+  'advance_paid',
+  'processing',
+  'shipped',
+  'delivered',
   'cancelled',
 ]

@@ -3,6 +3,8 @@ import ArtworkCarousel from '../components/ArtworkCarousel'
 import { fetchArtworks } from '../services/artworkService'
 import { getSketchArtworks } from '../utils/artworkCategories'
 import usePageMeta from '../hooks/usePageMeta'
+import ErrorState from '../components/ErrorState'
+import { getUserFriendlyError } from '../utils/userErrors'
 
 const placeholderSketch = {
   id: 'placeholder-sketch-1',
@@ -11,7 +13,10 @@ const placeholderSketch = {
   image:
     'https://images.unsplash.com/photo-1517971129774-8a2b38fa128e?auto=format&fit=crop&w=1600&q=80',
   images: [
-    'https://images.unsplash.com/photo-1517971129774-8a2b38fa128e?auto=format&fit=crop&w=1600&q=80',
+    {
+      url: 'https://images.unsplash.com/photo-1517971129774-8a2b38fa128e?auto=format&fit=crop&w=1600&q=80',
+      is_primary: true,
+    },
   ],
   category: 'sketch',
 }
@@ -20,6 +25,7 @@ function Sketch() {
   const [artworks, setArtworks] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+  const [retryKey, setRetryKey] = useState(0)
 
   usePageMeta({
     title: 'SKETCH | ARCHIVERSE',
@@ -28,22 +34,26 @@ function Sketch() {
 
   useEffect(() => {
     async function loadArtworks() {
+      setLoading(true)
       try {
         const response = await fetchArtworks()
         const sketchWorks = getSketchArtworks(response)
         setArtworks(sketchWorks.length > 0 ? sketchWorks : [placeholderSketch])
+        setErrorMessage('')
       } catch (error) {
-        setErrorMessage(`Could not load SKETCH works: ${error.message}`)
+        setErrorMessage(
+          getUserFriendlyError(error, 'We could not load sketch works right now.'),
+        )
       } finally {
         setLoading(false)
       }
     }
 
     loadArtworks()
-  }, [])
+  }, [retryKey])
 
   const sketchImages = artworks.map((artwork) => ({
-    src: artwork.images?.[0] || artwork.image,
+    src: artwork.image,
     title: artwork.title,
     medium: artwork.medium,
   }))
@@ -51,7 +61,12 @@ function Sketch() {
   return (
     <section className="page-flow fullscreen-page">
       {loading ? <p className="status-message">Loading SKETCH works...</p> : null}
-      {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
+      {errorMessage ? (
+        <ErrorState
+          message={errorMessage}
+          onRetry={() => setRetryKey((value) => value + 1)}
+        />
+      ) : null}
       {!loading && !errorMessage && artworks.length === 0 ? (
         <p className="status-message">No SKETCH works available yet.</p>
       ) : null}

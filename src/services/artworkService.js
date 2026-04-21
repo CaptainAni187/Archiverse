@@ -1,42 +1,38 @@
+import { backendAdminRequest } from './backendApiService'
 import { supabaseRequest } from './supabaseClient'
+import { getPrimaryArtworkImage, normalizeArtworkImages } from '../utils/artworkImages'
 
 function withoutCategory(payload) {
   const { category: _category, ...rest } = payload
   return rest
 }
 
-function isMissingCategoryColumn(error) {
-  const message = String(error?.message || '')
-  return message.includes('column') && message.includes('category') && message.includes('does not exist')
-}
-
 function normalizeArtwork(artwork) {
-  const images =
+  const images = normalizeArtworkImages(
     Array.isArray(artwork.images) && artwork.images.length > 0
       ? artwork.images
       : artwork.image
         ? [artwork.image]
-        : []
+        : [],
+  )
+  const primaryImage = getPrimaryArtworkImage(images, artwork.image)
 
   return {
     ...artwork,
     price: Number(artwork.price),
     images,
-    image: images[0] || '',
+    image: primaryImage,
     medium: artwork.medium || 'Not specified',
     size: artwork.size || 'Not specified',
-    status: artwork.status || 'available',
+    quantity: Number.isFinite(Number(artwork.quantity)) ? Number(artwork.quantity) : 1,
+    status:
+      Number(artwork.quantity) <= 0 ? 'sold' : artwork.status || 'available',
     category: artwork.category || '',
   }
 }
 
 function createArtworkPayload(artworkInput) {
-  const parsedImages = Array.isArray(artworkInput.images)
-    ? artworkInput.images
-    : String(artworkInput.images || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
+  const parsedImages = normalizeArtworkImages(artworkInput.images)
 
   const normalizedCategory = String(artworkInput.category || '').trim().toLowerCase()
   const category = normalizedCategory === 'sketch' ? 'sketch' : 'canvas'
@@ -45,11 +41,18 @@ function createArtworkPayload(artworkInput) {
     ...artworkInput,
     price: Number(artworkInput.price),
     images: parsedImages,
-    image: parsedImages[0] || '',
+    image: getPrimaryArtworkImage(parsedImages),
     medium: artworkInput.medium || '',
     size: artworkInput.size || '',
+    quantity: Number.isFinite(Number(artworkInput.quantity))
+      ? Math.max(0, Math.trunc(Number(artworkInput.quantity)))
+      : 1,
     status: artworkInput.status || 'available',
     category,
+  }
+
+  if (payload.quantity <= 0) {
+    payload.status = 'sold'
   }
 
   if (!payload.title?.trim()) {
@@ -64,8 +67,8 @@ function createArtworkPayload(artworkInput) {
     throw new Error('Artwork description is required.')
   }
 
-  if (payload.images.length === 0) {
-    throw new Error('At least one image URL is required.')
+  if (payload.images.length === 0 || payload.images.length > 5) {
+    throw new Error('Artwork must include between 1 and 5 images.')
   }
 
   return payload
@@ -83,80 +86,38 @@ export async function fetchSingleArtwork(id) {
 
 export async function addArtwork(artworkInput) {
   const payload = createArtworkPayload(artworkInput)
+  const requestPayload = payload.category ? payload : withoutCategory(payload)
+  const response = await backendAdminRequest('/api/artworks', {
+    method: 'POST',
+    body: JSON.stringify(requestPayload),
+  })
 
-  let data
-  try {
-    data = await supabaseRequest('artworks', {
-      method: 'POST',
-      headers: {
-        Prefer: 'return=representation',
-      },
-      body: JSON.stringify(payload),
-    })
-  } catch (error) {
-    if (!payload.category || !isMissingCategoryColumn(error)) {
-      throw error
-    }
-
-    data = await supabaseRequest('artworks', {
-      method: 'POST',
-      headers: {
-        Prefer: 'return=representation',
-      },
-      body: JSON.stringify(withoutCategory(payload)),
-    })
-  }
-
-  return normalizeArtwork(data[0])
+  return normalizeArtwork(response.artwork)
 }
 
 export async function updateArtwork(id, artworkInput) {
   const payload = createArtworkPayload(artworkInput)
+  const requestPayload = payload.category ? payload : withoutCategory(payload)
+  const response = await backendAdminRequest(`/api/artworks/${Number(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(requestPayload),
+  })
 
-  let data
-  try {
-    data = await supabaseRequest(`artworks?id=eq.${Number(id)}`, {
-      method: 'PATCH',
-      headers: {
-        Prefer: 'return=representation',
-      },
-      body: JSON.stringify(payload),
-    })
-  } catch (error) {
-    if (!payload.category || !isMissingCategoryColumn(error)) {
-      throw error
-    }
-
-    data = await supabaseRequest(`artworks?id=eq.${Number(id)}`, {
-      method: 'PATCH',
-      headers: {
-        Prefer: 'return=representation',
-      },
-      body: JSON.stringify(withoutCategory(payload)),
-    })
-  }
-
-  return normalizeArtwork(data[0])
+  return normalizeArtwork(response.artwork)
 }
 
 export async function updateArtworkStatus(id, status) {
-  const data = await supabaseRequest(`artworks?id=eq.${Number(id)}`, {
-    method: 'PATCH',
-    headers: {
-      Prefer: 'return=representation',
-    },
+  const response = await backendAdminRequest(`/api/artworks/${Number(id)}/status`, {
+    method: 'PUT',
     body: JSON.stringify({ status }),
   })
 
-  return normalizeArtwork(data[0])
+  return normalizeArtwork(response.artwork)
 }
 
 export async function deleteArtwork(id) {
-  await supabaseRequest(`artworks?id=eq.${Number(id)}`, {
+  await backendAdminRequest(`/api/artworks/${Number(id)}`, {
     method: 'DELETE',
-    headers: {
-      Prefer: 'return=minimal',
-    },
   })
 
   return { id }

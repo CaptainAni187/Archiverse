@@ -21,6 +21,20 @@ export function sendJson(res, statusCode, payload) {
   res.status(statusCode).json(payload)
 }
 
+export function unauthorized(res, message = 'Unauthorized.') {
+  return sendJson(res, 401, {
+    success: false,
+    message,
+  })
+}
+
+export function forbidden(res, message = 'Forbidden.') {
+  return sendJson(res, 403, {
+    success: false,
+    message,
+  })
+}
+
 export function methodNotAllowed(res, allowedMethods) {
   res.setHeader('Allow', allowedMethods.join(', '))
   return sendJson(res, 405, {

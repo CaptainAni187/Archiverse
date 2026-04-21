@@ -18,9 +18,11 @@ function PortfolioCard({ artwork }) {
     >
       <div className="portfolio-image-wrap">
         <ImageWithFallback
-          src={artwork.images?.[0] || artwork.image}
+          src={artwork.image}
           alt={artwork.title}
           className="portfolio-image"
+          sizes="(max-width: 720px) 100vw, (max-width: 980px) 50vw, 33vw"
+          maxWidth={960}
         />
       </div>
       <div className="portfolio-meta">

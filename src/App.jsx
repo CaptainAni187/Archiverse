@@ -6,14 +6,18 @@ import Product from './pages/Product'
 import Checkout from './pages/Checkout'
 import Admin from './pages/Admin'
 import AdminLogin from './pages/AdminLogin'
+import UserLogin from './pages/UserLogin'
+import UserAccount from './pages/UserAccount'
 import About from './pages/About'
 import Contact from './pages/Contact'
 import Policies from './pages/Policies'
 import OrderConfirmation from './pages/OrderConfirmation'
+import OrderTracking from './pages/OrderTracking'
 import Canvas from './pages/Canvas'
 import Sketch from './pages/Sketch'
 import Feed from './pages/Feed'
 import CV from './pages/CV'
+import Commission from './pages/Commission'
 import { OrderProvider } from './state/OrderContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import SiteHeader from './components/SiteHeader'
@@ -51,10 +55,14 @@ function AppLayout() {
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/commission" element={<Commission />} />
           <Route path="/policies" element={<Policies />} />
           <Route path="/product/:id" element={<Product />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/checkout/confirmation" element={<OrderConfirmation />} />
+          <Route path="/order/:orderCode" element={<OrderTracking />} />
+          <Route path="/login" element={<UserLogin />} />
+          <Route path="/account" element={<UserAccount />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route
             path="/admin"

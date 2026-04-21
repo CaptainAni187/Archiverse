@@ -2,9 +2,13 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useOrderContext } from '../state/useOrderContext'
 import { fetchSingleArtwork } from '../services/artworkService'
+import { trackAnalyticsEvent } from '../services/analyticsService'
 import ImageWithFallback from '../components/ImageWithFallback'
 import Reveal from '../components/Reveal'
+import ErrorState from '../components/ErrorState'
+import { SkeletonProduct } from '../components/SkeletonLoader'
 import usePageMeta from '../hooks/usePageMeta'
+import { getUserFriendlyError } from '../utils/userErrors'
 
 function formatPrice(price) {
   return `Rs. ${Number(price).toLocaleString()}`
@@ -18,6 +22,8 @@ function Product() {
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [activeImage, setActiveImage] = useState('')
+  const [isZoomOpen, setIsZoomOpen] = useState(false)
+  const [retryKey, setRetryKey] = useState(0)
 
   usePageMeta({
     title: artwork ? `${artwork.title} | Archiverse` : 'Artwork | Archiverse',
@@ -27,27 +33,62 @@ function Product() {
 
   useEffect(() => {
     async function loadArtwork() {
+      setLoading(true)
       try {
         const response = await fetchSingleArtwork(id)
         setArtwork(response || null)
-        setActiveImage(response?.images?.[0] || response?.image || '')
+        setActiveImage(response?.image || response?.images?.[0]?.url || '')
+        if (response) {
+          void trackAnalyticsEvent('artwork_view', {
+            artwork_id: response.id,
+            title: response.title,
+            category: response.category || null,
+          })
+        }
         setErrorMessage('')
       } catch (error) {
-        setErrorMessage(`Could not load artwork: ${error.message}`)
+        setErrorMessage(
+          getUserFriendlyError(error, 'We could not load this artwork right now.'),
+        )
       } finally {
         setLoading(false)
       }
     }
 
     loadArtwork()
-  }, [id])
+  }, [id, retryKey])
+
+  useEffect(() => {
+    if (!isZoomOpen) {
+      return undefined
+    }
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsZoomOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isZoomOpen])
 
   if (loading) {
-    return <p className="status-message">Loading artwork...</p>
+    return (
+      <section className="page-flow page-with-header-gap">
+        <SkeletonProduct />
+      </section>
+    )
   }
 
   if (errorMessage) {
-    return <p className="status-message error">{errorMessage}</p>
+    return (
+      <ErrorState
+        message={errorMessage}
+        onRetry={() => setRetryKey((value) => value + 1)}
+      />
+    )
   }
 
   if (!artwork) {
@@ -55,40 +96,54 @@ function Product() {
   }
 
   const buyNow = () => {
-    if (artwork.status === 'sold') {
+    if (artwork.status === 'sold' || Number(artwork.quantity) <= 0) {
       return
     }
 
     setSelectedProduct(artwork)
     navigate('/checkout', { state: { product: artwork } })
   }
+  const isSoldOut = artwork.status === 'sold' || Number(artwork.quantity) <= 0
 
   return (
     <section className="page-flow page-with-header-gap">
       <Reveal className="product-layout">
         <div className="product-gallery">
           <div className="product-image-wrap">
-            <ImageWithFallback
-              src={activeImage || artwork.images?.[0] || artwork.image}
-              alt={artwork.title}
-              className="product-image"
-            />
-            {artwork.status === 'sold' ? (
+            <button
+              type="button"
+              className="product-zoom-trigger"
+              onClick={() => setIsZoomOpen(true)}
+              aria-label={`Open full resolution view of ${artwork.title}`}
+            >
+              <ImageWithFallback
+                src={activeImage || artwork.image}
+                alt={artwork.title}
+                className="product-image"
+                loading="eager"
+                fetchPriority="high"
+                sizes="(max-width: 980px) 100vw, 50vw"
+                maxWidth={1400}
+              />
+            </button>
+            {isSoldOut ? (
               <span className="badge sold product-badge">Sold Out</span>
             ) : null}
           </div>
           <div className="thumbnail-row">
-            {(artwork.images || []).map((imageUrl) => (
+            {(artwork.images || []).map((image) => (
               <button
-                key={imageUrl}
+                key={image.url}
                 type="button"
-                className={`thumbnail-btn ${activeImage === imageUrl ? 'active' : ''}`}
-                onClick={() => setActiveImage(imageUrl)}
+                className={`thumbnail-btn ${activeImage === image.url ? 'active' : ''}`}
+                onClick={() => setActiveImage(image.url)}
               >
                 <ImageWithFallback
-                  src={imageUrl}
+                  src={image.url}
                   alt={`${artwork.title} view`}
                   className="thumbnail-image"
+                  sizes="120px"
+                  maxWidth={240}
                 />
               </button>
             ))}
@@ -115,12 +170,35 @@ function Product() {
             type="button"
             className="text-link-button action-button"
             onClick={buyNow}
-            disabled={artwork.status === 'sold'}
+            disabled={isSoldOut}
           >
-            {artwork.status === 'sold' ? 'Sold Out' : 'Buy This Work'}
+            {isSoldOut ? 'Sold Out' : 'Buy This Work'}
           </button>
         </div>
       </Reveal>
+      {isZoomOpen ? (
+        <div
+          className="image-zoom-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${artwork.title} full resolution image`}
+          onClick={() => setIsZoomOpen(false)}
+        >
+          <button
+            type="button"
+            className="image-zoom-close"
+            onClick={() => setIsZoomOpen(false)}
+          >
+            Close
+          </button>
+          <img
+            src={activeImage || artwork.image}
+            alt={artwork.title}
+            className="image-zoom-full"
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </section>
   )
 }

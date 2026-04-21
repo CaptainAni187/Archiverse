@@ -1,3 +1,5 @@
+import { getAdminToken } from './adminAuthService'
+
 async function parseApiResponse(response) {
   const text = await response.text()
   let payload = {}
@@ -15,16 +17,29 @@ async function parseApiResponse(response) {
   return payload
 }
 
-async function backendRequest(path, options = {}) {
+export async function backendRequest(path, options = {}) {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
   const response = await fetch(path, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(options.headers || {}),
     },
   })
 
   return parseApiResponse(response)
+}
+
+export async function backendAdminRequest(path, options = {}) {
+  const token = getAdminToken()
+
+  return backendRequest(path, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token || ''}`,
+      ...(options.headers || {}),
+    },
+  })
 }
 
 export async function createPaymentOrder(productId) {
@@ -51,6 +66,14 @@ export async function lookupOrderByPaymentId(paymentId) {
   return payload.order
 }
 
+export async function lookupOrderByCode(orderCode) {
+  const payload = await backendRequest(
+    `/api/orders/code/${encodeURIComponent(orderCode)}`,
+  )
+
+  return payload.order
+}
+
 export async function createVerifiedOrder(orderInput) {
   const payload = await backendRequest('/api/orders', {
     method: 'POST',
@@ -58,4 +81,19 @@ export async function createVerifiedOrder(orderInput) {
   })
 
   return payload.order
+}
+
+export async function uploadArtworkImages(files) {
+  const formData = new FormData()
+
+  files.forEach((file) => {
+    formData.append('images', file)
+  })
+
+  const payload = await backendAdminRequest('/api/upload-images', {
+    method: 'POST',
+    body: formData,
+  })
+
+  return payload.images
 }

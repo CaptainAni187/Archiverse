@@ -1,3 +1,5 @@
+import './loadEnv.js'
+
 function readEnv(name, fallback = '') {
   return process.env[name] || fallback
 }
@@ -12,6 +14,7 @@ export function getBackendConfig() {
     adminNotificationEmail: readEnv('ADMIN_NOTIFICATION_EMAIL'),
     resendApiKey: readEnv('RESEND_API_KEY'),
     fromEmail: readEnv('FROM_EMAIL'),
+    userSessionSecret: readEnv('USER_SESSION_SECRET', readEnv('ADMIN_SESSION_SECRET')),
   }
 }
 

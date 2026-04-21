@@ -22,9 +22,11 @@ function StoreCard({ artwork }) {
     >
       <div className="store-card-media">
         <ImageWithFallback
-          src={artwork.images?.[0] || artwork.image}
+          src={artwork.image}
           alt={artwork.title}
           className="store-card-image"
+          sizes="(max-width: 720px) 100vw, (max-width: 980px) 50vw, 33vw"
+          maxWidth={960}
         />
         {artwork.status === 'sold' ? (
           <span className="badge sold card-badge">SOLD OUT</span>

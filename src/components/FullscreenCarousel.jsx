@@ -14,7 +14,7 @@ function FullscreenCarousel({
         .filter(Boolean)
         .map((artwork) => ({
           id: artwork.id || artwork.title,
-          image: artwork.images?.[0] || artwork.image,
+          image: artwork.image,
           title: artwork.title || 'UNTITLED',
           medium: artwork.medium || 'ACRYLIC',
         }))
@@ -62,6 +62,10 @@ function FullscreenCarousel({
             src={slide.image}
             alt={slide.title}
             className={`carousel-image ${index === activeIndex ? 'is-active' : ''}`}
+            loading={index === activeIndex ? 'eager' : 'lazy'}
+            fetchPriority={index === activeIndex ? 'high' : undefined}
+            sizes="100vw"
+            maxWidth={2200}
           />
         ))}
 
