@@ -63,6 +63,7 @@ function Contact() {
             <a href="https://www.instagram.com/__archiverse_/" target="_blank" rel="noreferrer">
               INSTAGRAM
             </a>
+            <a href="mailto:archikri07@gmail.com">MAIL</a>
             <a
               href="https://www.linkedin.com/in/archi-kumari-6a3489371/"
               target="_blank"
@@ -124,6 +125,26 @@ function Contact() {
             <p className={`status-message ${status.type}`.trim()}>{status.message}</p>
           ) : null}
         </form>
+      </Reveal>
+
+      <Reveal className="developer-section">
+        <div className="contact-copy developer-copy">
+          <p className="eyebrow">SITE & DEVELOPMENT</p>
+          <p className="section-copy">DESIGNED & DEVELOPED BY ANIMESH</p>
+          <div className="contact-links">
+            <a href="https://github.com/CaptainAni187" target="_blank" rel="noreferrer">
+              GITHUB
+            </a>
+            <a
+              href="https://www.linkedin.com/in/animesh-kumar-5347b4294/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              LINKEDIN
+            </a>
+            <a href="mailto:kanimesh187@gmail.com">MAIL</a>
+          </div>
+        </div>
       </Reveal>
     </section>
   )

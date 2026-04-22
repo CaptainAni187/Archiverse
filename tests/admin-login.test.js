@@ -14,12 +14,13 @@ describe('admin login handler', () => {
   })
 
   it('returns a JWT for valid credentials', async () => {
-    const { default: handler } = await import('../api/admin/login.js')
+    const { default: handler } = await import('../api/admin.js')
     const res = createMockResponse()
 
     await handler(
       {
         method: 'POST',
+        query: { action: 'login' },
         body: {
           email: 'admin@example.com',
           password: 'SuperSecret123!',
@@ -38,12 +39,13 @@ describe('admin login handler', () => {
 
   it('rejects invalid credentials', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const { default: handler } = await import('../api/admin/login.js')
+    const { default: handler } = await import('../api/admin.js')
     const res = createMockResponse()
 
     await handler(
       {
         method: 'POST',
+        query: { action: 'login' },
         body: {
           email: 'admin@example.com',
           password: 'wrong-password',

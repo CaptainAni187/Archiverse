@@ -36,7 +36,7 @@ function getImageFiles(files) {
   return list.filter((file) => file && typeof file === 'object')
 }
 
-export async function buildUploadedImagesResponse(imageFiles, uploader = uploadArtworkImageFile) {
+async function buildUploadedImagesResponse(imageFiles, uploader = uploadArtworkImageFile) {
   return Promise.all(
     imageFiles.map(async (file, index) => {
       const uploaded = await uploader(file)

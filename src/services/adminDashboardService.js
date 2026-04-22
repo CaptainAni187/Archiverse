@@ -11,12 +11,13 @@ const emptyDashboard = {
 
 export async function fetchDashboardAnalytics() {
   const payload = await backendAdminRequest('/api/admin/dashboard')
+  const dashboard = payload.data || {}
 
   return {
     ...emptyDashboard,
-    ...(payload.dashboard || {}),
-    orders_per_day: Array.isArray(payload.dashboard?.orders_per_day)
-      ? payload.dashboard.orders_per_day
+    ...dashboard,
+    orders_per_day: Array.isArray(dashboard.orders_per_day)
+      ? dashboard.orders_per_day
       : [],
   }
 }

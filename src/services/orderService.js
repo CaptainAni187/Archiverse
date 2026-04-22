@@ -54,7 +54,7 @@ export async function createOrder(orderInput) {
 
 export async function fetchOrders() {
   const payload = await backendAdminRequest('/api/orders')
-  return payload.orders.map(normalizeOrder)
+  return (payload.data || []).map(normalizeOrder)
 }
 
 export async function findOrderByPaymentId(paymentId) {
@@ -77,5 +77,5 @@ export async function updateOrderPaymentStatus(orderId, paymentStatus) {
     body: JSON.stringify({ payment_status: normalizedStatus }),
   })
 
-  return normalizeOrder(payload.order)
+  return normalizeOrder(payload.data)
 }

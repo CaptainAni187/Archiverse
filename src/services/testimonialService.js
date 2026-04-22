@@ -2,15 +2,20 @@ import { backendAdminRequest, backendRequest } from './backendApiService'
 
 function normalizeTestimonial(testimonial) {
   return {
-    ...testimonial,
-    rating: Number(testimonial.rating || 5),
-    location: testimonial.location || '',
+    id: testimonial.id,
+    name: testimonial.name || '',
+    content: testimonial.content || '',
+    artwork_id: testimonial.artwork_id == null ? null : Number(testimonial.artwork_id),
+    rating: testimonial.rating == null ? null : Number(testimonial.rating),
+    is_featured: testimonial.is_featured === true,
+    is_visible: testimonial.is_visible !== false,
+    created_at: testimonial.created_at || null,
   }
 }
 
 export async function fetchTestimonials() {
-  const payload = await backendRequest('/api/testimonials')
-  return payload.testimonials.map(normalizeTestimonial)
+  const payload = await backendRequest('/api/testimonials?featured=true')
+  return (payload.data || []).map(normalizeTestimonial)
 }
 
 export async function addTestimonial(testimonialInput) {
@@ -19,5 +24,5 @@ export async function addTestimonial(testimonialInput) {
     body: JSON.stringify(testimonialInput),
   })
 
-  return normalizeTestimonial(payload.testimonial)
+  return normalizeTestimonial(payload.data)
 }

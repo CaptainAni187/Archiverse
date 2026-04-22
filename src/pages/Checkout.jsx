@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { createOrder } from '../services/orderService'
 import { useOrderContext } from '../state/useOrderContext'
-import ImageWithFallback from '../components/ImageWithFallback'
 import {
   loadRazorpayScript,
   openRazorpayCheckout,
@@ -190,6 +189,10 @@ function Checkout() {
   const advanceAmount = deliveryDetails.advanceAmount
   const remainingAmount = deliveryDetails.remainingAmount
   const deliveryEstimate = deliveryDetails.deliveryEstimate
+  const checkoutImage = useMemo(
+    () => (Array.isArray(selectedProduct.images) ? selectedProduct.images[0] || '' : ''),
+    [selectedProduct],
+  )
 
   const onChange = (event) => {
     const { name, value } = event.target
@@ -409,14 +412,17 @@ function Checkout() {
           <p className="checkout-note">
             A 50% ADVANCE SECURES THE WORK
           </p>
-          <ImageWithFallback
-            src={selectedProduct.image}
-            alt={selectedProduct.title}
-            className="checkout-artwork-image"
-            loading="eager"
-            sizes="(max-width: 980px) 100vw, 45vw"
-            maxWidth={1200}
-          />
+          {checkoutImage ? (
+            <img
+              src={checkoutImage}
+              alt={selectedProduct.title}
+              className="checkout-artwork-image"
+              loading="eager"
+              decoding="async"
+              width="1200"
+              height="1500"
+            />
+          ) : null}
           <div className="checkout-summary">
             <h3>{selectedProduct.title}</h3>
             <p>Artwork subtotal: {formatPrice(subtotal)}</p>

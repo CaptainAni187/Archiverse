@@ -30,12 +30,13 @@ describe('payment verification handler', () => {
       throw new Error(`Unexpected fetch: ${value}`)
     })
 
-    const { default: handler } = await import('../api/verify-payment.js')
+    const { default: handler } = await import('../api/payments.js')
     const res = createMockResponse()
 
     await handler(
       {
         method: 'POST',
+        query: { action: 'verify' },
         body: {
           razorpay_payment_id: 'pay_duplicate',
           razorpay_order_id: 'order_1',
@@ -65,12 +66,13 @@ describe('payment verification handler', () => {
       throw new Error(`Unexpected fetch: ${value}`)
     })
 
-    const { default: handler } = await import('../api/verify-payment.js')
+    const { default: handler } = await import('../api/payments.js')
     const res = createMockResponse()
 
     await handler(
       {
         method: 'POST',
+        query: { action: 'verify' },
         body: {
           razorpay_payment_id: 'pay_new',
           razorpay_order_id: 'order_new',

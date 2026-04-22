@@ -29,12 +29,12 @@ export async function submitCommission(form, files) {
     body: formData,
   })
 
-  return parseCommission(payload.commission)
+  return parseCommission(payload.data?.commission)
 }
 
 export async function fetchCommissions() {
   const payload = await backendAdminRequest('/api/commissions')
-  return payload.commissions.map(parseCommission)
+  return (payload.data || []).map(parseCommission)
 }
 
 export async function updateCommissionStatus(id, status) {
@@ -43,5 +43,5 @@ export async function updateCommissionStatus(id, status) {
     body: JSON.stringify({ status }),
   })
 
-  return parseCommission(payload.commission)
+  return parseCommission(payload.data)
 }

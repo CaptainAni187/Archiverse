@@ -11,8 +11,22 @@ async function parseAuthResponse(response) {
   try {
     payload = rawText ? JSON.parse(rawText) : null
   } catch {
+    const normalizedText = rawText.trim().toLowerCase()
+    const looksLikeHtml =
+      normalizedText.startsWith('<!doctype') ||
+      normalizedText.startsWith('<html') ||
+      normalizedText.startsWith('<')
+
+    if (response.ok && looksLikeHtml) {
+      throw new Error(
+        'Admin API is not returning JSON. Start `npm run dev:vercel` alongside `npm run dev`.',
+      )
+    }
+
     throw new Error(`Server error (${response.status}). Admin API may be unavailable.`)
   }
+
+  console.log('API RESPONSE:', payload)
 
   if (!payload || !response.ok || payload.success === false) {
     throw new Error(payload?.message || `Server error (${response.status}).`)
@@ -32,10 +46,10 @@ export async function loginAdmin(email, password) {
   })
 
   const payload = await parseAuthResponse(response)
-  if (!payload.token) {
+  if (!payload.data?.token) {
     throw new Error('Server error')
   }
-  localStorage.setItem(ADMIN_TOKEN_KEY, payload.token)
+  localStorage.setItem(ADMIN_TOKEN_KEY, payload.data.token)
   return true
 }
 
@@ -66,7 +80,7 @@ export async function isAdminAuthenticated() {
       },
     })
     const payload = await parseAuthResponse(response)
-    return payload.authenticated === true
+    return payload.data?.authenticated === true
   } catch {
     localStorage.removeItem(ADMIN_TOKEN_KEY)
     return false

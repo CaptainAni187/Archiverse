@@ -52,7 +52,9 @@ function AdminLogin() {
     try {
       const response = await requestAdminPasswordReset(resetEmail.trim())
       setResetMessage(
-        `${response.message} Temporary token: ${response.resetToken || 'not generated'}`,
+        `${response.data?.message || 'Reset token generated.'} Temporary token: ${
+          response.data?.resetToken || 'not generated'
+        }`,
       )
     } catch (error) {
       setErrorMessage(error.message === 'Email not found.' ? 'Invalid credentials' : error.message)
@@ -73,7 +75,7 @@ function AdminLogin() {
         resetToken.trim(),
         newPassword,
       )
-      setResetMessage(response.message)
+      setResetMessage(response.data?.message || 'Password reset successfully.')
       setResetToken('')
       setNewPassword('')
     } catch (error) {

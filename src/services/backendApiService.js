@@ -10,6 +10,8 @@ async function parseApiResponse(response) {
     throw new Error('Server returned an invalid response.')
   }
 
+  console.log('API RESPONSE:', payload)
+
   if (!response.ok || payload.success === false) {
     throw new Error(payload.message || `Request failed (${response.status}).`)
   }
@@ -48,14 +50,16 @@ export async function createPaymentOrder(productId) {
     body: JSON.stringify({ product_id: productId }),
   })
 
-  return payload.order
+  return payload.data?.order
 }
 
 export async function verifyPayment(paymentDetails) {
-  return backendRequest('/api/verify-payment', {
+  const payload = await backendRequest('/api/verify-payment', {
     method: 'POST',
     body: JSON.stringify(paymentDetails),
   })
+
+  return payload.data
 }
 
 export async function lookupOrderByPaymentId(paymentId) {
@@ -63,7 +67,7 @@ export async function lookupOrderByPaymentId(paymentId) {
     `/api/orders?payment_id=${encodeURIComponent(paymentId)}`,
   )
 
-  return payload.order
+  return payload.data
 }
 
 export async function lookupOrderByCode(orderCode) {
@@ -71,7 +75,7 @@ export async function lookupOrderByCode(orderCode) {
     `/api/orders/code/${encodeURIComponent(orderCode)}`,
   )
 
-  return payload.order
+  return payload.data
 }
 
 export async function createVerifiedOrder(orderInput) {
@@ -80,20 +84,5 @@ export async function createVerifiedOrder(orderInput) {
     body: JSON.stringify(orderInput),
   })
 
-  return payload.order
-}
-
-export async function uploadArtworkImages(files) {
-  const formData = new FormData()
-
-  files.forEach((file) => {
-    formData.append('images', file)
-  })
-
-  const payload = await backendAdminRequest('/api/upload-images', {
-    method: 'POST',
-    body: formData,
-  })
-
-  return payload.images
+  return payload.data?.order
 }

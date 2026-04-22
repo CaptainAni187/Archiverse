@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ArtworkCarousel from '../components/ArtworkCarousel'
 import { fetchArtworks } from '../services/artworkService'
 import { getSketchArtworks } from '../utils/artworkCategories'
@@ -10,13 +10,8 @@ const placeholderSketch = {
   id: 'placeholder-sketch-1',
   title: 'FIGURE STUDY',
   medium: 'GRAPHITE ON PAPER',
-  image:
-    'https://images.unsplash.com/photo-1517971129774-8a2b38fa128e?auto=format&fit=crop&w=1600&q=80',
   images: [
-    {
-      url: 'https://images.unsplash.com/photo-1517971129774-8a2b38fa128e?auto=format&fit=crop&w=1600&q=80',
-      is_primary: true,
-    },
+    'https://images.unsplash.com/photo-1517971129774-8a2b38fa128e?auto=format&fit=crop&w=1600&q=80',
   ],
   category: 'sketch',
 }
@@ -52,11 +47,15 @@ function Sketch() {
     loadArtworks()
   }, [retryKey])
 
-  const sketchImages = artworks.map((artwork) => ({
-    src: artwork.image,
-    title: artwork.title,
-    medium: artwork.medium,
-  }))
+  const sketchImages = useMemo(
+    () =>
+      artworks.map((artwork) => ({
+        src: Array.isArray(artwork.images) ? artwork.images[0] || '' : '',
+        title: artwork.title,
+        medium: artwork.medium,
+      })),
+    [artworks],
+  )
 
   return (
     <section className="page-flow fullscreen-page">

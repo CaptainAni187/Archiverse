@@ -9,12 +9,13 @@ import {
 import { createPaymentLog } from './_lib/paymentLogs.js'
 import { fetchRazorpayPayment, verifyRazorpaySignature } from './_lib/razorpay.js'
 import {
+  decrementArtworkStock,
   fetchArtworkById,
   fetchLatestOrderCodes,
+  fetchOrderByCode,
   fetchOrderById,
   fetchOrderByPaymentId,
   fetchOrders,
-  decrementArtworkStock,
   supabaseAdminRequest,
   updateOrderById,
 } from './_lib/supabaseAdmin.js'
@@ -35,7 +36,39 @@ function normalizeOrder(order) {
     processing_at: order.processing_at || null,
     shipped_at: order.shipped_at || null,
     delivered_at: order.delivered_at || null,
+    payment_verified_at: order.payment_verified_at || null,
+    razorpay_payment_id: order.razorpay_payment_id || null,
+    razorpay_order_id: order.razorpay_order_id || null,
   }
+}
+
+function normalizeTrackingOrder(order) {
+  return {
+    order_code: order.order_code,
+    product_title: order.product_title,
+    payment_status: order.payment_status || 'pending',
+    total_amount: Number(order.total_amount),
+    advance_amount: Number(order.advance_amount),
+    created_at: order.created_at || null,
+    payment_verified_at: order.payment_verified_at || null,
+    processing_at: order.processing_at || null,
+    shipped_at: order.shipped_at || null,
+    delivered_at: order.delivered_at || null,
+    customer_name: order.customer_name || null,
+    customer_email: order.customer_email || null,
+    customer_phone: order.customer_phone || null,
+    customer_address: order.customer_address || null,
+    razorpay_payment_id: order.razorpay_payment_id || null,
+  }
+}
+
+function getOrderId(req) {
+  const orderId = req.query?.id
+  return Array.isArray(orderId) ? Number(orderId[0]) : Number(orderId)
+}
+
+function getAction(req) {
+  return String(req.query?.action || '').trim().toLowerCase()
 }
 
 function getNextOrderCode(existingCodes) {
@@ -102,6 +135,7 @@ async function handleCreateOrder(req, res) {
 
   const existingOrder = await fetchOrderByPaymentId(razorpayPaymentId)
   if (existingOrder) {
+    const normalizedOrder = normalizeOrder(existingOrder)
     await createPaymentLog({
       event_type: 'create_order',
       status: 'duplicate_payment_id',
@@ -116,7 +150,11 @@ async function handleCreateOrder(req, res) {
     return sendJson(res, 200, {
       success: true,
       duplicated: true,
-      order: normalizeOrder(existingOrder),
+      order: normalizedOrder,
+      data: {
+        duplicated: true,
+        order: normalizedOrder,
+      },
     })
   }
 
@@ -124,6 +162,7 @@ async function handleCreateOrder(req, res) {
   if (!artwork) {
     return sendJson(res, 404, {
       success: false,
+      error: 'ARTWORK_NOT_FOUND',
       message: 'Selected artwork was not found.',
     })
   }
@@ -131,6 +170,7 @@ async function handleCreateOrder(req, res) {
   if (artwork.status === 'sold' || Number(artwork.quantity) <= 0) {
     return sendJson(res, 409, {
       success: false,
+      error: 'ARTWORK_SOLD',
       message: 'This artwork has already been sold.',
     })
   }
@@ -139,6 +179,7 @@ async function handleCreateOrder(req, res) {
   if (!config.razorpayKeyId || !config.razorpayKeySecret) {
     throw new Error('Razorpay backend environment variables are not configured.')
   }
+
   const signatureValid = verifyRazorpaySignature({
     razorpayPaymentId,
     razorpayOrderId,
@@ -159,6 +200,7 @@ async function handleCreateOrder(req, res) {
 
     return sendJson(res, 400, {
       success: false,
+      error: 'INVALID_SIGNATURE',
       message: 'Payment signature verification failed during order creation.',
     })
   }
@@ -182,6 +224,7 @@ async function handleCreateOrder(req, res) {
 
     return sendJson(res, 400, {
       success: false,
+      error: 'PAYMENT_NOT_VERIFIED',
       message: `Payment is not in a verified state. Current status: ${payment.status}.`,
     })
   }
@@ -207,6 +250,7 @@ async function handleCreateOrder(req, res) {
 
     return sendJson(res, 400, {
       success: false,
+      error: 'PAYMENT_MISMATCH',
       message: 'Payment details do not match the selected artwork.',
     })
   }
@@ -262,11 +306,25 @@ async function handleCreateOrder(req, res) {
           ? customerNotification.value
           : { delivered: false, skipped: false },
     },
+    data: {
+      duplicated: false,
+      order,
+      notifications: {
+        admin:
+          adminNotification.status === 'fulfilled'
+            ? adminNotification.value
+            : { emailStatus: { delivered: false, skipped: false } },
+        customer:
+          customerNotification.status === 'fulfilled'
+            ? customerNotification.value
+            : { delivered: false, skipped: false },
+      },
+    },
   })
 }
 
-async function handleLookupOrder(req, res) {
-  const paymentId = String(req.query.payment_id || '').trim()
+async function handleLookupOrders(req, res) {
+  const paymentId = String(req.query?.payment_id || '').trim()
 
   if (!paymentId) {
     if (!requireAdminAuth(req, res)) {
@@ -277,6 +335,7 @@ async function handleLookupOrder(req, res) {
     return sendJson(res, 200, {
       success: true,
       orders: orders.map(normalizeOrder),
+      data: orders.map(normalizeOrder),
     })
   }
 
@@ -285,6 +344,7 @@ async function handleLookupOrder(req, res) {
   if (!order) {
     return sendJson(res, 404, {
       success: false,
+      error: 'ORDER_NOT_FOUND',
       message: 'No order found for this payment yet.',
     })
   }
@@ -292,18 +352,48 @@ async function handleLookupOrder(req, res) {
   return sendJson(res, 200, {
     success: true,
     order: normalizeOrder(order),
+    data: normalizeOrder(order),
   })
 }
 
-async function handleUpdateOrder(req, res) {
+async function handleLookupOrderByCode(req, res) {
+  const orderCode = String(req.query?.orderCode || '').trim()
+
+  if (!orderCode) {
+    return sendJson(res, 400, {
+      success: false,
+      error: 'INVALID_ORDER_CODE',
+      message: 'A valid order code is required.',
+    })
+  }
+
+  const order = await fetchOrderByCode(orderCode)
+
+  if (!order) {
+    return sendJson(res, 404, {
+      success: false,
+      error: 'ORDER_NOT_FOUND',
+      message: 'No order found for this order code.',
+    })
+  }
+
+  return sendJson(res, 200, {
+    success: true,
+    order: normalizeTrackingOrder(order),
+    data: normalizeTrackingOrder(order),
+  })
+}
+
+async function handleUpdateOrderStatus(req, res) {
   if (!requireAdminAuth(req, res)) {
     return null
   }
 
-  const orderId = Number(req.query.id)
+  const orderId = getOrderId(req)
   if (!Number.isInteger(orderId) || orderId <= 0) {
     return sendJson(res, 400, {
       success: false,
+      error: 'INVALID_ORDER_ID',
       message: 'A valid order id is required.',
     })
   }
@@ -315,6 +405,7 @@ async function handleUpdateOrder(req, res) {
   if (!existingOrder) {
     return sendJson(res, 404, {
       success: false,
+      error: 'ORDER_NOT_FOUND',
       message: 'Order not found.',
     })
   }
@@ -327,6 +418,7 @@ async function handleUpdateOrder(req, res) {
   if (transitionError) {
     return sendJson(res, 409, {
       success: false,
+      error: 'INVALID_STATUS_TRANSITION',
       message: transitionError,
     })
   }
@@ -339,24 +431,31 @@ async function handleUpdateOrder(req, res) {
   return sendJson(res, 200, {
     success: true,
     order: normalizeOrder(updatedOrder),
+    data: normalizeOrder(updatedOrder),
   })
 }
 
 export default async function handler(req, res) {
   try {
+    const action = getAction(req)
+
     if (req.method === 'POST') {
       return await handleCreateOrder(req, res)
     }
 
+    if (req.method === 'GET' && action === 'code') {
+      return await handleLookupOrderByCode(req, res)
+    }
+
     if (req.method === 'GET') {
-      return await handleLookupOrder(req, res)
+      return await handleLookupOrders(req, res)
     }
 
-    if (req.method === 'PUT') {
-      return await handleUpdateOrder(req, res)
+    if ((req.method === 'PATCH' || req.method === 'PUT') && action === 'status') {
+      return await handleUpdateOrderStatus(req, res)
     }
 
-    return methodNotAllowed(res, ['GET', 'POST', 'PUT'])
+    return methodNotAllowed(res, ['GET', 'POST', 'PATCH', 'PUT'])
   } catch (error) {
     if (error.validationIssues) {
       return sendValidationError(res, error.validationIssues)
@@ -364,6 +463,7 @@ export default async function handler(req, res) {
 
     return sendJson(res, error.status || 500, {
       success: false,
+      error: error.error || 'ORDER_REQUEST_FAILED',
       message: error.message || 'Unable to process the order request.',
     })
   }

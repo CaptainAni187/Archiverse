@@ -1,8 +1,10 @@
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import ImageWithFallback from './ImageWithFallback'
 
 function PortfolioCard({ artwork }) {
   const navigate = useNavigate()
+  const images = useMemo(() => artwork.images || [], [artwork.id, artwork.images])
+  const primaryImage = images[0]
 
   return (
     <article
@@ -17,13 +19,17 @@ function PortfolioCard({ artwork }) {
       }}
     >
       <div className="portfolio-image-wrap">
-        <ImageWithFallback
-          src={artwork.image}
-          alt={artwork.title}
-          className="portfolio-image"
-          sizes="(max-width: 720px) 100vw, (max-width: 980px) 50vw, 33vw"
-          maxWidth={960}
-        />
+        {primaryImage ? (
+          <img
+            src={primaryImage}
+            alt={artwork.title}
+            className="portfolio-image"
+            loading="lazy"
+            decoding="async"
+            width="960"
+            height="1200"
+          />
+        ) : null}
       </div>
       <div className="portfolio-meta">
         <h3>{artwork.title}</h3>

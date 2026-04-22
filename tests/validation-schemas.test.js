@@ -6,7 +6,7 @@ import {
 } from '../api/_lib/validation.js'
 
 describe('validation schemas', () => {
-  it('normalizes legacy image arrays into structured artwork images', () => {
+  it('accepts artwork image arrays as plain urls', () => {
     const parsed = artworkPayloadSchema.parse({
       title: 'Structured Work',
       price: 1000,
@@ -18,12 +18,7 @@ describe('validation schemas', () => {
       images: ['https://example.com/image.jpg'],
     })
 
-    expect(parsed.images).toEqual([
-      {
-        url: 'https://example.com/image.jpg',
-        is_primary: true,
-      },
-    ])
+    expect(parsed.images).toEqual(['https://example.com/image.jpg'])
   })
 
   it('rejects artwork payloads with too many images', () => {
@@ -36,12 +31,12 @@ describe('validation schemas', () => {
       status: 'available',
       category: 'canvas',
       images: [
-        { url: 'https://example.com/1.jpg', is_primary: true },
-        { url: 'https://example.com/2.jpg', is_primary: false },
-        { url: 'https://example.com/3.jpg', is_primary: false },
-        { url: 'https://example.com/4.jpg', is_primary: false },
-        { url: 'https://example.com/5.jpg', is_primary: false },
-        { url: 'https://example.com/6.jpg', is_primary: false },
+        'https://example.com/1.jpg',
+        'https://example.com/2.jpg',
+        'https://example.com/3.jpg',
+        'https://example.com/4.jpg',
+        'https://example.com/5.jpg',
+        'https://example.com/6.jpg',
       ],
     })
 

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 
 const CLOSE_DELAY_MS = 180
 
 function NavDropdown({ label, items }) {
+  const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
   const closeTimeoutRef = useRef(null)
+  const containerRef = useRef(null)
+  const isActive = items.some((item) => location.pathname === item.to)
 
   const clearCloseTimeout = () => {
     if (closeTimeoutRef.current) {
@@ -28,19 +31,29 @@ function NavDropdown({ label, items }) {
 
   useEffect(() => () => clearCloseTimeout(), [])
 
+  const handleBlur = (event) => {
+    if (containerRef.current?.contains(event.relatedTarget)) {
+      return
+    }
+
+    closeMenuWithDelay()
+  }
+
   return (
     <div
+      ref={containerRef}
       className={`nav-dropdown ${isOpen ? 'is-open' : ''}`}
       onMouseEnter={openMenu}
       onMouseLeave={closeMenuWithDelay}
       onFocus={openMenu}
-      onBlur={closeMenuWithDelay}
+      onBlur={handleBlur}
     >
       <button
         type="button"
-        className="nav-dropdown-trigger"
+        className={`nav-dropdown-trigger ${isActive ? 'active-nav' : ''}`.trim()}
         onClick={() => setIsOpen((value) => !value)}
         aria-expanded={isOpen}
+        aria-haspopup="menu"
       >
         {label}
       </button>

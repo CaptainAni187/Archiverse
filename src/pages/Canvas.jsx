@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ArtworkCarousel from '../components/ArtworkCarousel'
 import { fetchArtworks } from '../services/artworkService'
 import { getCanvasArtworks } from '../utils/artworkCategories'
@@ -36,12 +36,16 @@ function Canvas() {
     loadArtworks()
   }, [retryKey])
 
-  const canvasImages = artworks.map((artwork) => ({
-    src: artwork.image,
-    title: artwork.title,
-    medium: artwork.medium,
-    year: artwork.year,
-  }))
+  const canvasImages = useMemo(
+    () =>
+      artworks.map((artwork) => ({
+        src: Array.isArray(artwork.images) ? artwork.images[0] || '' : '',
+        title: artwork.title,
+        medium: artwork.medium,
+        year: artwork.year,
+      })),
+    [artworks],
+  )
 
   return (
     <section className="page-flow fullscreen-page">

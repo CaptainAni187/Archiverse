@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import ImageWithFallback from './ImageWithFallback'
 
 function FullscreenCarousel({
   artworks,
@@ -10,11 +9,11 @@ function FullscreenCarousel({
 }) {
   const slides = useMemo(
     () =>
-      artworks
+      (artworks || [])
         .filter(Boolean)
         .map((artwork) => ({
           id: artwork.id || artwork.title,
-          image: artwork.image,
+          image: Array.isArray(artwork.images) ? artwork.images[0] : '',
           title: artwork.title || 'UNTITLED',
           medium: artwork.medium || 'ACRYLIC',
         }))
@@ -22,6 +21,25 @@ function FullscreenCarousel({
     [artworks],
   )
   const [activeIndex, setActiveIndex] = useState(0)
+
+  useEffect(() => {
+    if (slides.length === 0) {
+      setActiveIndex(0)
+      return
+    }
+
+    setActiveIndex((previous) => {
+      if (previous < 0) {
+        return slides.length - 1
+      }
+
+      if (previous >= slides.length) {
+        return 0
+      }
+
+      return previous
+    })
+  }, [slides.length])
 
   useEffect(() => {
     if (!autoSlide || slides.length <= 1) {
@@ -57,15 +75,18 @@ function FullscreenCarousel({
     <section className="fullscreen-carousel">
       <div className="carousel-stage full-bleed">
         {slides.map((slide, index) => (
-          <ImageWithFallback
+          <img
             key={`${slide.id}-${index}`}
             src={slide.image}
             alt={slide.title}
-            className={`carousel-image ${index === activeIndex ? 'is-active' : ''}`}
             loading={index === activeIndex ? 'eager' : 'lazy'}
+            decoding="async"
+            width="2200"
+            height="1600"
+            className={`carousel-image carousel-image-frame ${
+              index === activeIndex ? 'is-active' : ''
+            }`}
             fetchPriority={index === activeIndex ? 'high' : undefined}
-            sizes="100vw"
-            maxWidth={2200}
           />
         ))}
 

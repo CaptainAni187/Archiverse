@@ -4,7 +4,12 @@ import NavDropdown from './NavDropdown'
 function SocialIcons() {
   return (
     <div className="social-links">
-      <a href="https://www.instagram.com/__archiverse_/" target="_blank" rel="noreferrer">
+      <a
+        href="https://www.instagram.com/__archiverse_/"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Instagram"
+      >
         <svg className="social-icon" aria-hidden="true">
           <use href="/icons.svg#instagram-icon" />
         </svg>
@@ -14,6 +19,7 @@ function SocialIcons() {
         href="https://www.linkedin.com/in/archi-kumari-6a3489371/"
         target="_blank"
         rel="noreferrer"
+        aria-label="LinkedIn"
       >
         <svg className="social-icon" aria-hidden="true">
           <use href="/icons.svg#linkedin-icon" />
@@ -26,6 +32,10 @@ function SocialIcons() {
 
 function SiteHeader() {
   const location = useLocation()
+  const aboutItems = [
+    { to: '/feed', label: 'FEED' },
+    { to: '/contact', label: 'CONTACT' },
+  ]
   const isOverlay =
     location.pathname === '/' ||
     location.pathname === '/canvas' ||
@@ -56,13 +66,7 @@ function SiteHeader() {
           <NavLink to="/sketch" className={({ isActive }) => (isActive ? 'active-nav' : '')}>
             SKETCH
           </NavLink>
-          <NavDropdown
-            label="ABOUT"
-            items={[
-              { to: '/feed', label: 'FEED' },
-              { to: '/contact', label: 'CONTACT' },
-            ]}
-          />
+          <NavDropdown label="ABOUT" items={aboutItems} />
           <NavLink
             to="/store"
             className={({ isActive }) => (isActive ? 'active-nav' : '')}

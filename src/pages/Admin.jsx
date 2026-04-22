@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   addArtwork,
@@ -19,23 +19,35 @@ import {
   emptyDashboard,
   fetchDashboardAnalytics,
 } from '../services/adminDashboardService'
-import { uploadArtworkImages } from '../services/backendApiService'
+import { backendAdminRequest } from '../services/backendApiService'
 import { ORDER_STATUSES } from '../constants/orderStatus'
 import { logoutAdmin } from '../services/adminAuthService'
-import ImageWithFallback from '../components/ImageWithFallback'
+import { addTestimonial } from '../services/testimonialService'
 import usePageMeta from '../hooks/usePageMeta'
-import { normalizeArtworkImages } from '../utils/artworkImages'
 
 const initialForm = {
-  images: '',
+  image1: '',
+  image2: '',
+  image3: '',
+  image4: '',
+  image5: '',
   title: '',
   price: '',
   description: '',
   medium: '',
   size: '',
+  is_featured: false,
   quantity: '1',
   status: 'available',
   category: 'canvas',
+}
+
+const initialTestimonialForm = {
+  name: '',
+  content: '',
+  rating: '',
+  artwork_id: '',
+  is_featured: false,
 }
 
 function formatPrice(price) {
@@ -54,15 +66,14 @@ function Admin() {
   const [artworks, setArtworks] = useState([])
   const [orders, setOrders] = useState([])
   const [commissions, setCommissions] = useState([])
+  const [inquiries, setInquiries] = useState([])
   const [dashboardStats, setDashboardStats] = useState(emptyDashboard)
   const [selectedOrderId, setSelectedOrderId] = useState(null)
   const [artworkFilter, setArtworkFilter] = useState('all')
   const [message, setMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [loading, setLoading] = useState(true)
-  const [selectedFiles, setSelectedFiles] = useState([])
-  const [isUploadingImages, setIsUploadingImages] = useState(false)
-  const [imageDraft, setImageDraft] = useState([])
+  const [testimonialForm, setTestimonialForm] = useState(initialTestimonialForm)
 
   const loadArtworks = async () => {
     const response = await fetchArtworks()
@@ -77,6 +88,11 @@ function Admin() {
   const loadCommissions = async () => {
     const response = await fetchCommissions()
     setCommissions(response)
+  }
+
+  const loadInquiries = async () => {
+    const response = await backendAdminRequest('/api/inquiries')
+    setInquiries(Array.isArray(response.data) ? response.data : [])
   }
 
   const loadDashboardStats = async () => {
@@ -94,17 +110,20 @@ function Admin() {
           artworkResponse,
           orderResponse,
           commissionResponse,
+          inquiryResponse,
           dashboardResponse,
         ] = await Promise.all([
           fetchArtworks(),
           fetchOrders(),
           fetchCommissions(),
+          backendAdminRequest('/api/inquiries'),
           fetchDashboardAnalytics(),
         ])
         if (!isCancelled) {
           setArtworks(artworkResponse)
           setOrders(orderResponse)
           setCommissions(commissionResponse)
+          setInquiries(Array.isArray(inquiryResponse.data) ? inquiryResponse.data : [])
           setDashboardStats(dashboardResponse)
           setSelectedOrderId((previous) => previous || orderResponse[0]?.id || null)
           setErrorMessage('')
@@ -130,11 +149,12 @@ function Admin() {
   const onChange = (event) => {
     const { name, value } = event.target
     setForm((previous) => ({ ...previous, [name]: value }))
-
-    if (name === 'images') {
-      setImageDraft(normalizeArtworkImages(value))
-    }
   }
+
+  const getImageFields = (value) =>
+    [value.image1, value.image2, value.image3, value.image4, value.image5]
+      .map((image) => image.trim())
+      .filter(Boolean)
 
   const onSubmit = async (event) => {
     event.preventDefault()
@@ -154,12 +174,31 @@ function Admin() {
       return
     }
 
+    const images = getImageFields(form)
+
+    if (images.length === 0) {
+      setErrorMessage('At least one image URL is required.')
+      return
+    }
+
+    if (images.length > 5) {
+      setErrorMessage('An artwork can have at most 5 images.')
+      return
+    }
+
+    try {
+      images.forEach((image) => new URL(image))
+    } catch {
+      setErrorMessage('Each image must be a valid URL.')
+      return
+    }
+
     try {
       const payload = {
         ...form,
         title: normalizedTitle,
         price: normalizedPrice,
-        images: imageDraft,
+        images,
       }
 
       if (editingId) {
@@ -172,68 +211,31 @@ function Admin() {
 
       setForm(initialForm)
       setEditingId(null)
-      setImageDraft([])
       await loadArtworks()
     } catch (error) {
       setErrorMessage(`Failed to save artwork: ${error.message}`)
     }
   }
 
-  const onFileSelection = (event) => {
-    const files = Array.from(event.target.files || [])
-    setSelectedFiles(files.slice(0, 5))
-  }
-
-  const onUploadImages = async () => {
-    if (selectedFiles.length === 0) {
-      setErrorMessage('Select at least one image to upload.')
-      return
-    }
-
-    const existingImages = imageDraft
-    if (existingImages.length + selectedFiles.length > 5) {
-      setErrorMessage('An artwork can have at most 5 images.')
-      return
-    }
-
-    setIsUploadingImages(true)
-    setErrorMessage('')
-    setMessage('')
-
-    try {
-      const uploadedImages = await uploadArtworkImages(selectedFiles)
-      const combinedImages = [...existingImages, ...uploadedImages]
-
-      setImageDraft(combinedImages)
-      setForm((previous) => ({
-        ...previous,
-        images: combinedImages.map((image) => image.url).join(', '),
-      }))
-      setSelectedFiles([])
-      setMessage('Images uploaded successfully.')
-    } catch (error) {
-      setErrorMessage(`Failed to upload images: ${error.message}`)
-    } finally {
-      setIsUploadingImages(false)
-    }
-  }
-
   const onEditArtwork = (artwork) => {
-    const normalizedImages = normalizeArtworkImages(artwork.images || [])
+    const images = Array.isArray(artwork.images) ? artwork.images : []
 
     setForm({
+      image1: images[0] || '',
+      image2: images[1] || '',
+      image3: images[2] || '',
+      image4: images[3] || '',
+      image5: images[4] || '',
       title: artwork.title,
       price: String(artwork.price),
       description: artwork.description,
       medium: artwork.medium || '',
       size: artwork.size || '',
+      is_featured: artwork.is_featured === true,
       quantity: String(artwork.quantity ?? 1),
       status: artwork.status || 'available',
       category: artwork.category || 'canvas',
-      images: normalizedImages.map((image) => image.url).join(', '),
     })
-    setImageDraft(normalizedImages)
-    setSelectedFiles([])
     setEditingId(artwork.id)
     setMessage('')
     setErrorMessage('')
@@ -252,6 +254,34 @@ function Admin() {
       setMessage('Artwork deleted successfully.')
     } catch (error) {
       setErrorMessage(`Failed to delete artwork: ${error.message}`)
+    }
+  }
+
+  const onChangeTestimonial = (event) => {
+    const { name, value, type, checked } = event.target
+    setTestimonialForm((previous) => ({
+      ...previous,
+      [name]: type === 'checkbox' ? checked : value,
+    }))
+  }
+
+  const onSubmitTestimonial = async (event) => {
+    event.preventDefault()
+    setMessage('')
+    setErrorMessage('')
+
+    try {
+      await addTestimonial({
+        name: testimonialForm.name.trim(),
+        content: testimonialForm.content.trim(),
+        rating: testimonialForm.rating ? Number(testimonialForm.rating) : undefined,
+        artwork_id: testimonialForm.artwork_id ? Number(testimonialForm.artwork_id) : undefined,
+        is_featured: testimonialForm.is_featured,
+      })
+      setTestimonialForm(initialTestimonialForm)
+      setMessage('Testimonial added successfully.')
+    } catch (error) {
+      setErrorMessage(`Failed to add testimonial: ${error.message}`)
     }
   }
 
@@ -284,15 +314,29 @@ function Admin() {
     setErrorMessage('')
     try {
       await updateCommissionStatus(commissionId, status)
-      await loadCommissions()
+      await Promise.all([loadCommissions(), loadInquiries()])
       setMessage('Commission status updated.')
     } catch (error) {
       setErrorMessage(`Failed to update commission: ${error.message}`)
     }
   }
 
-  const filteredArtworks = artworks.filter((artwork) =>
-    artworkFilter === 'all' ? true : artwork.status === artworkFilter,
+  const filteredArtworks = useMemo(
+    () =>
+      artworks.filter((artwork) =>
+        artworkFilter === 'all' ? true : artwork.status === artworkFilter,
+      ),
+    [artworks, artworkFilter],
+  )
+  const adminArtworkPreviews = useMemo(
+    () =>
+      new Map(
+        filteredArtworks.map((artwork) => [
+          artwork.id,
+          Array.isArray(artwork.images) ? artwork.images[0] || '' : '',
+        ]),
+      ),
+    [filteredArtworks],
   )
   const artworksById = Object.fromEntries(artworks.map((artwork) => [artwork.id, artwork]))
   const selectedOrder =
@@ -325,34 +369,25 @@ function Admin() {
 
       <form className="admin-form" onSubmit={onSubmit}>
         <label>
-          Image URLs (comma separated)
-          <input
-            name="images"
-            value={form.images}
-            onChange={onChange}
-            placeholder="https://img1.jpg, https://img2.jpg"
-            required
-          />
+          Image URL 1
+          <input name="image1" value={form.image1} onChange={onChange} required />
         </label>
         <label>
-          Upload images
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={onFileSelection}
-          />
+          Image URL 2
+          <input name="image2" value={form.image2} onChange={onChange} />
         </label>
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={onUploadImages}
-            disabled={isUploadingImages}
-          >
-            {isUploadingImages ? 'Uploading…' : 'Upload Selected Images'}
-          </button>
-        </div>
+        <label>
+          Image URL 3
+          <input name="image3" value={form.image3} onChange={onChange} />
+        </label>
+        <label>
+          Image URL 4
+          <input name="image4" value={form.image4} onChange={onChange} />
+        </label>
+        <label>
+          Image URL 5
+          <input name="image5" value={form.image5} onChange={onChange} />
+        </label>
         <label>
           Title
           <input name="title" value={form.title} onChange={onChange} required />
@@ -384,6 +419,17 @@ function Admin() {
         <label>
           Size
           <input name="size" value={form.size} onChange={onChange} required />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            name="is_featured"
+            checked={form.is_featured}
+            onChange={(event) =>
+              setForm((previous) => ({ ...previous, is_featured: event.target.checked }))
+            }
+          />
+          Featured on homepage
         </label>
         <label>
           Quantity
@@ -420,13 +466,66 @@ function Admin() {
               onClick={() => {
                 setEditingId(null)
                 setForm(initialForm)
-                setSelectedFiles([])
-                setImageDraft([])
               }}
             >
               Cancel Edit
             </button>
           ) : null}
+        </div>
+      </form>
+
+      <form className="admin-form" onSubmit={onSubmitTestimonial}>
+        <h3>Testimonials</h3>
+        <label>
+          Name
+          <input
+            name="name"
+            value={testimonialForm.name}
+            onChange={onChangeTestimonial}
+            required
+          />
+        </label>
+        <label>
+          Content
+          <textarea
+            name="content"
+            value={testimonialForm.content}
+            onChange={onChangeTestimonial}
+            required
+          />
+        </label>
+        <label>
+          Rating
+          <input
+            name="rating"
+            type="number"
+            min="1"
+            max="5"
+            value={testimonialForm.rating}
+            onChange={onChangeTestimonial}
+          />
+        </label>
+        <label>
+          Artwork ID
+          <input
+            name="artwork_id"
+            type="number"
+            min="1"
+            value={testimonialForm.artwork_id}
+            onChange={onChangeTestimonial}
+          />
+        </label>
+        <label>
+          <input
+            name="is_featured"
+            type="checkbox"
+            checked={testimonialForm.is_featured}
+            onChange={onChangeTestimonial}
+          />
+          Featured
+        </label>
+        <div className="btn-row">
+          <button type="submit">Add Testimonial</button>
         </div>
       </form>
 
@@ -495,10 +594,16 @@ function Admin() {
         ) : (
           filteredArtworks.map((artwork) => (
           <article key={artwork.id} className="admin-item">
-            <ImageWithFallback
-              src={artwork.image}
-              alt={artwork.title}
-            />
+            {adminArtworkPreviews.get(artwork.id) ? (
+              <img
+                src={adminArtworkPreviews.get(artwork.id)}
+                alt={artwork.title}
+                loading="lazy"
+                decoding="async"
+                width="400"
+                height="400"
+              />
+            ) : null}
             <div>
               <h3>{artwork.title}</h3>
               <p>{formatPrice(artwork.price)}</p>
@@ -652,6 +757,24 @@ function Admin() {
         )}
       </div>
 
+      <h2 className="orders-heading">Inquiries</h2>
+      <div className="admin-list">
+        {inquiries.length === 0 ? (
+          <p>No inquiries yet.</p>
+        ) : (
+          inquiries.map((inquiry) => (
+            <article key={inquiry.id} className="admin-item order-item">
+              <div>
+                <h3>{inquiry.subject}</h3>
+                <p>Name: {inquiry.name}</p>
+                <p>Email: {inquiry.email}</p>
+                <p>{inquiry.message}</p>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+
       <h2 className="orders-heading">Commissions</h2>
       <div className="admin-list">
         {commissions.length === 0 ? (
@@ -672,11 +795,15 @@ function Admin() {
                 {commission.reference_images?.length > 0 ? (
                   <div className="thumbnail-row">
                     {commission.reference_images.map((imageUrl) => (
-                      <ImageWithFallback
+                      <img
                         key={imageUrl}
                         src={imageUrl}
                         alt={`Commission ${commission.id} reference`}
                         className="thumbnail-image"
+                        loading="lazy"
+                        decoding="async"
+                        width="240"
+                        height="240"
                       />
                     ))}
                   </div>

@@ -1,6 +1,27 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
+    { "source": "/api/admin/login", "destination": "/api/admin?action=login" },
+    { "source": "/api/admin/logout", "destination": "/api/admin?action=logout" },
+    { "source": "/api/admin/me", "destination": "/api/admin?action=me" },
+    { "source": "/api/admin/session", "destination": "/api/admin?action=session" },
+    { "source": "/api/admin/dashboard", "destination": "/api/admin?action=dashboard" },
+    { "source": "/api/admin/forgot-password", "destination": "/api/admin?action=forgot-password" },
+    { "source": "/api/admin/reset-password", "destination": "/api/admin?action=reset-password" },
+    { "source": "/api/artworks/:id/status", "destination": "/api/artworks?id=:id&action=status" },
+    { "source": "/api/artworks/:id", "destination": "/api/artworks?id=:id" },
+    { "source": "/api/orders/code/:orderCode", "destination": "/api/orders?action=code&orderCode=:orderCode" },
+    { "source": "/api/orders/:id/status", "destination": "/api/orders?id=:id&action=status" },
+    { "source": "/api/create-order", "destination": "/api/payments?action=create-order" },
+    { "source": "/api/payment-order", "destination": "/api/payments?action=create-order" },
+    { "source": "/api/verify-payment", "destination": "/api/payments?action=verify" },
+    { "source": "/api/commissions/:id/status", "destination": "/api/commissions?id=:id&action=status" },
+    { "source": "/api/upload-images", "destination": "/api/upload" },
+    { "source": "/api/user/signup", "destination": "/api/user?action=signup" },
+    { "source": "/api/user/login", "destination": "/api/user?action=login" },
+    { "source": "/api/user/logout", "destination": "/api/user?action=logout" },
+    { "source": "/api/user/me", "destination": "/api/user?action=me" },
+    { "source": "/api/user/orders", "destination": "/api/user?action=orders" },
     { "source": "/api/(.*)", "destination": "/api/$1" }
   ],
   "routes": [

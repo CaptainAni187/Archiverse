@@ -27,6 +27,7 @@ export async function uploadPublicFile(file, bucketName = BUCKET_NAME, prefix = 
         apikey: config.supabaseServiceRoleKey,
         Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
         'Content-Type': file.mimetype || 'application/octet-stream',
+        'cache-control': 'public, max-age=31536000, immutable',
         'x-upsert': 'false',
       },
       body: fileBuffer,

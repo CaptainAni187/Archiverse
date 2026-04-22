@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import ImageWithFallback from './ImageWithFallback'
 
 function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) {
   const slides = useMemo(() => {
@@ -7,7 +6,7 @@ function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) 
       .filter(Boolean)
       .map((item, index) => ({
         id: item.id || `${item.title || 'slide'}-${index}`,
-        src: item.src,
+        src: typeof item.src === 'string' ? item.src.trim() : '',
         title: item.title || 'UNTITLED',
         medium: item.medium || '',
         year: item.year || '',
@@ -24,6 +23,25 @@ function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) 
 
   const goPrevious = () => setActiveIndex((previous) => previous - 1)
   const goNext = () => setActiveIndex((previous) => previous + 1)
+
+  useEffect(() => {
+    if (count === 0) {
+      setActiveIndex(0)
+      return
+    }
+
+    setActiveIndex((previous) => {
+      if (previous < 0) {
+        return count - 1
+      }
+
+      if (previous >= count) {
+        return 0
+      }
+
+      return previous
+    })
+  }, [count])
 
   useEffect(() => {
     if (count <= 1 || isHovering) {
@@ -80,7 +98,7 @@ function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) 
       <div className="artwork-carousel__stage full-bleed">
         <div
           className="artwork-carousel__track"
-          style={{ transform: `translateX(-${safeIndex * 100}vw)` }}
+          style={{ transform: `translateX(-${safeIndex * 100}%)` }}
         >
           {slides.map((slide, index) => (
             <div
@@ -88,14 +106,15 @@ function ArtworkCarousel({ images, interval = 5000, overlayPosition = 'left' }) 
               className="artwork-carousel__slide"
               aria-hidden={index !== safeIndex}
             >
-              <ImageWithFallback
+              <img
                 src={slide.src}
                 alt={slide.title}
                 className="artwork-carousel__image"
                 loading={index === safeIndex ? 'eager' : 'lazy'}
+                decoding="async"
                 fetchPriority={index === safeIndex ? 'high' : undefined}
-                sizes="100vw"
-                maxWidth={2200}
+                width="2200"
+                height="1600"
               />
 
               <div

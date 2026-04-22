@@ -24,6 +24,7 @@ export function sendJson(res, statusCode, payload) {
 export function unauthorized(res, message = 'Unauthorized.') {
   return sendJson(res, 401, {
     success: false,
+    error: 'UNAUTHORIZED',
     message,
   })
 }
@@ -31,6 +32,7 @@ export function unauthorized(res, message = 'Unauthorized.') {
 export function forbidden(res, message = 'Forbidden.') {
   return sendJson(res, 403, {
     success: false,
+    error: 'FORBIDDEN',
     message,
   })
 }
@@ -39,6 +41,7 @@ export function methodNotAllowed(res, allowedMethods) {
   res.setHeader('Allow', allowedMethods.join(', '))
   return sendJson(res, 405, {
     success: false,
+    error: 'METHOD_NOT_ALLOWED',
     message: `Method not allowed. Use ${allowedMethods.join(', ')}.`,
   })
 }

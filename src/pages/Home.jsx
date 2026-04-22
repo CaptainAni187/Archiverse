@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { fetchArtworks } from '../services/artworkService'
 import { fetchTestimonials } from '../services/testimonialService'
 import FullscreenCarousel from '../components/FullscreenCarousel'
 import PortfolioCard from '../components/PortfolioCard'
-import ImageWithFallback from '../components/ImageWithFallback'
 import { Link } from 'react-router-dom'
 import usePageMeta from '../hooks/usePageMeta'
 import { getCanvasArtworks, getSketchArtworks } from '../utils/artworkCategories'
@@ -12,8 +11,9 @@ import { SkeletonGrid } from '../components/SkeletonLoader'
 import { getUserFriendlyError } from '../utils/userErrors'
 
 function Home() {
+  const [heroCanvasWorks, setHeroCanvasWorks] = useState([])
+  const [heroSketchWorks, setHeroSketchWorks] = useState([])
   const [canvasWorks, setCanvasWorks] = useState([])
-  const [sketchWorks, setSketchWorks] = useState([])
   const [testimonials, setTestimonials] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
@@ -42,9 +42,14 @@ function Home() {
           )
         }
 
-        setCanvasWorks(getCanvasArtworks(artworks).slice(0, 4))
-        setSketchWorks(getSketchArtworks(artworks).slice(0, 2))
-        setTestimonials(reviewResponse)
+        const featuredWorks = artworks
+          .filter((artwork) => artwork.is_featured === true)
+          .slice(0, 6)
+
+        setHeroCanvasWorks(getCanvasArtworks(artworks).slice(0, 4))
+        setHeroSketchWorks(getSketchArtworks(artworks).slice(0, 2))
+        setCanvasWorks(featuredWorks)
+        setTestimonials(reviewResponse.slice(0, 3))
         setErrorMessage('')
       } catch (error) {
         setErrorMessage(
@@ -58,6 +63,11 @@ function Home() {
     loadFeatured()
   }, [retryKey])
 
+  const heroArtworks = useMemo(
+    () => [...heroCanvasWorks, ...heroSketchWorks],
+    [heroCanvasWorks, heroSketchWorks],
+  )
+
   return (
     <section className="page-flow">
       {loading ? (
@@ -67,7 +77,7 @@ function Home() {
           </div>
           <section className="section-block">
             <p className="eyebrow">FEATURED WORKS</p>
-            <SkeletonGrid className="portfolio-grid" count={4} />
+            <SkeletonGrid className="portfolio-grid" count={6} />
           </section>
         </>
       ) : null}
@@ -81,7 +91,7 @@ function Home() {
       {!loading && !errorMessage ? (
         <>
           <FullscreenCarousel
-            artworks={[...canvasWorks, ...sketchWorks]}
+            artworks={heroArtworks}
             autoSlide
             interval={5000}
             showMeta={false}
@@ -103,7 +113,7 @@ function Home() {
           <section className="section-block">
             <p className="eyebrow">FEATURED WORKS</p>
             <div className="portfolio-grid">
-              {canvasWorks.slice(0, 6).map((artwork) => (
+              {canvasWorks.map((artwork) => (
                 <PortfolioCard key={artwork.id} artwork={artwork} />
               ))}
             </div>
@@ -112,24 +122,40 @@ function Home() {
           <section className="section-block">
             <p className="eyebrow">ABOUT</p>
             <p className="section-copy">
-              ARCHIVERSE PRESENTS ORIGINAL WORKS WITH A QUIET, IMAGE-FIRST
-              STRUCTURE FOR COLLECTORS AND CURIOUS VIEWERS.
+              HANDMADE ACRYLIC ARTWORKS
             </p>
+            <p className="section-copy">
+              MINIMAL • MODERN • PERSONAL
+            </p>
+            <p className="section-copy">
+              EACH PIECE IS CREATED WITH DETAIL,
+              DESIGNED TO FIT YOUR SPACE AND STYLE.
+            </p>
+          </section>
+
+          <section className="section-block">
+            <p className="eyebrow">CUSTOM ARTWORKS</p>
+            <p className="section-copy">
+              REQUEST A PERSONALIZED PAINTING
+              BASED ON YOUR IDEA, STYLE, AND SPACE.
+            </p>
+            <Link to="/contact" className="text-link-button">
+              CONTACT
+            </Link>
           </section>
 
           {testimonials.length > 0 ? (
             <section className="section-block">
-              <p className="eyebrow">REVIEWS</p>
+              <p className="eyebrow">TESTIMONIALS</p>
               <div className="testimonial-grid">
                 {testimonials.map((testimonial) => (
                   <article key={testimonial.id} className="testimonial-card">
-                    <p className="testimonial-rating">
-                      {'*'.repeat(testimonial.rating)}
-                    </p>
-                    <p className="section-copy">"{testimonial.review_text}"</p>
+                    {testimonial.rating ? (
+                      <p className="testimonial-rating">{'*'.repeat(testimonial.rating)}</p>
+                    ) : null}
+                    <p className="section-copy">"{testimonial.content}"</p>
                     <p>
-                      <strong>{testimonial.customer_name}</strong>
-                      {testimonial.location ? ` / ${testimonial.location}` : ''}
+                      <strong>{testimonial.name.toUpperCase()}</strong>
                     </p>
                   </article>
                 ))}
@@ -137,41 +163,11 @@ function Home() {
             </section>
           ) : null}
 
-          <section className="section-block process-grid">
-            <div>
-              <p className="eyebrow">STEP 01</p>
-              <p className="section-copy">DISCOVER A WORK</p>
-            </div>
-            <div>
-              <p className="eyebrow">STEP 02</p>
-              <p className="section-copy">RESERVE WITH 50% ADVANCE</p>
-            </div>
-            <div>
-              <p className="eyebrow">STEP 03</p>
-              <p className="section-copy">CONFIRMATION AND PREP</p>
-            </div>
-            <div>
-              <p className="eyebrow">STEP 04</p>
-              <p className="section-copy">DELIVERY AND FINAL PAYMENT</p>
-            </div>
-          </section>
-
           <section className="section-block">
-            <p className="eyebrow">FEED PREVIEW</p>
-            <div className="feed-preview-grid">
-              {[...canvasWorks, ...sketchWorks]
-                .slice(0, 6)
-                .map((artwork) => (
-                  <ImageWithFallback
-                    key={artwork.id}
-                    src={artwork.image}
-                    alt={artwork.title}
-                    className="feed-preview-image"
-                    sizes="(max-width: 720px) 50vw, 33vw"
-                    maxWidth={720}
-                  />
-                ))}
-            </div>
+            <p className="eyebrow">EXPLORE FULL GALLERY</p>
+            <Link to="/feed" className="text-link-button">
+              VIEW GALLERY
+            </Link>
           </section>
         </>
       ) : null}

@@ -1,14 +1,27 @@
+import { requireAdminAuth } from './_lib/adminSession.js'
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
 import { getBackendConfig } from './_lib/env.js'
 import { sendResendEmail } from './_lib/notifications.js'
 import { supabaseAdminRequest } from './_lib/supabaseAdmin.js'
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return methodNotAllowed(res, ['POST'])
-  }
-
   try {
+    if (req.method === 'GET') {
+      if (!requireAdminAuth(req, res)) {
+        return null
+      }
+
+      const inquiries = await supabaseAdminRequest('inquiries?select=*&order=id.desc')
+      return sendJson(res, 200, {
+        success: true,
+        data: Array.isArray(inquiries) ? inquiries : [],
+      })
+    }
+
+    if (req.method !== 'POST') {
+      return methodNotAllowed(res, ['GET', 'POST'])
+    }
+
     const body = await readJson(req)
     const name = String(body.name || '').trim()
     const email = String(body.email || '').trim()
@@ -18,6 +31,7 @@ export default async function handler(req, res) {
     if (!name || !email || !subject || !message) {
       return sendJson(res, 400, {
         success: false,
+        error: 'INVALID_INQUIRY',
         message: 'Name, email, subject, and message are required.',
       })
     }
@@ -60,12 +74,12 @@ export default async function handler(req, res) {
 
     return sendJson(res, 201, {
       success: true,
-      message: 'Inquiry received.',
-      inquiry: inserted?.[0] || null,
+      data: inserted?.[0] || null,
     })
   } catch (error) {
     return sendJson(res, error.status || 500, {
       success: false,
+      error: error.error || 'INQUIRY_REQUEST_FAILED',
       message: error.message || 'Unable to submit inquiry.',
     })
   }

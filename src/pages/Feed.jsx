@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Reveal from '../components/Reveal'
-import ImageWithFallback from '../components/ImageWithFallback'
 import { fetchArtworks } from '../services/artworkService'
 import usePageMeta from '../hooks/usePageMeta'
 import ErrorState from '../components/ErrorState'
@@ -23,7 +22,7 @@ function Feed() {
       setLoading(true)
       try {
         const response = await fetchArtworks()
-        setArtworks(response.slice(0, 6))
+        setArtworks(response)
         setErrorMessage('')
       } catch (error) {
         setErrorMessage(
@@ -36,6 +35,19 @@ function Feed() {
 
     loadFeed()
   }, [retryKey])
+
+  const featureImage = useMemo(
+    () => (Array.isArray(artworks[0]?.images) ? artworks[0].images[0] || '' : ''),
+    [artworks],
+  )
+  const masonryItems = useMemo(
+    () =>
+      artworks.slice(1).map((artwork) => ({
+        ...artwork,
+        src: Array.isArray(artwork.images) ? artwork.images[0] || '' : '',
+      })),
+    [artworks],
+  )
 
   return (
     <section className="page-flow page-with-header-gap">
@@ -56,26 +68,34 @@ function Feed() {
 
       {artworks[0] ? (
         <Reveal className="feed-feature">
-          <ImageWithFallback
-            src={artworks[0].image}
-            alt={artworks[0].title}
-            className="feed-feature-image"
-            sizes="100vw"
-            maxWidth={1600}
-          />
+          {featureImage ? (
+            <img
+              src={featureImage}
+              alt={artworks[0].title}
+              className="feed-feature-image"
+              loading="lazy"
+              decoding="async"
+              width="1600"
+              height="1200"
+            />
+          ) : null}
         </Reveal>
       ) : null}
 
       <div className="feed-masonry">
-        {artworks.slice(1).map((artwork, index) => (
+        {masonryItems.map((artwork, index) => (
           <Reveal key={artwork.id} className={`feed-brick feed-brick-${(index % 4) + 1}`}>
-            <ImageWithFallback
-              src={artwork.image}
-              alt={artwork.title}
-              className="feed-image"
-              sizes="(max-width: 720px) 100vw, (max-width: 980px) 50vw, 33vw"
-              maxWidth={900}
-            />
+            {artwork.src ? (
+              <img
+                src={artwork.src}
+                alt={artwork.title}
+                className="feed-image"
+                loading="lazy"
+                decoding="async"
+                width="900"
+                height="1200"
+              />
+            ) : null}
           </Reveal>
         ))}
       </div>

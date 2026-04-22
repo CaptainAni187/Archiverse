@@ -1,6 +1,5 @@
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import ImageWithFallback from './ImageWithFallback'
 
 function formatPrice(price) {
   return `Rs. ${Number(price).toLocaleString()}`
@@ -8,6 +7,8 @@ function formatPrice(price) {
 
 function ArtworkCard({ artwork }) {
   const navigate = useNavigate()
+  const images = useMemo(() => artwork.images || [], [artwork.id, artwork.images])
+  const primaryImage = images[0]
 
   return (
     <article
@@ -22,13 +23,17 @@ function ArtworkCard({ artwork }) {
       }}
     >
       <div className="card-media">
-        <ImageWithFallback
-          src={artwork.image}
-          alt={artwork.title}
-          className="card-image"
-          sizes="(max-width: 720px) 100vw, (max-width: 980px) 50vw, 33vw"
-          maxWidth={960}
-        />
+        {primaryImage ? (
+          <img
+            src={primaryImage}
+            alt={artwork.title}
+            className="card-image"
+            loading="lazy"
+            decoding="async"
+            width="960"
+            height="1200"
+          />
+        ) : null}
         <div className="card-overlay">
           <div className="card-overlay-copy">
             <h3>{artwork.title}</h3>

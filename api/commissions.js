@@ -5,14 +5,17 @@ import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
 import { notifyCommissionRequest } from './_lib/notifications.js'
 import { uploadPublicFile } from './_lib/supabaseStorage.js'
 import {
+  createCommission,
+  fetchCommissionById,
+  fetchCommissions,
+  updateCommissionById,
+} from './_lib/supabaseAdmin.js'
+import {
   commissionPayloadSchema,
+  commissionStatusUpdateSchema,
   sendValidationError,
   validateWithSchema,
 } from './_lib/validation.js'
-import {
-  createCommission,
-  fetchCommissions,
-} from './_lib/supabaseAdmin.js'
 
 const COMMISSION_BUCKET = 'commission-references'
 
@@ -30,6 +33,15 @@ function normalizeCommission(commission) {
       : [],
     status: commission.status || 'pending',
   }
+}
+
+function getCommissionId(req) {
+  const commissionId = req.query?.id
+  return Array.isArray(commissionId) ? Number(commissionId[0]) : Number(commissionId)
+}
+
+function getAction(req) {
+  return String(req.query?.action || '').trim().toLowerCase()
 }
 
 async function handleCreateCommission(req, res) {
@@ -51,6 +63,7 @@ async function handleCreateCommission(req, res) {
       return sendJson(res, 400, {
         success: false,
         error: 'VALIDATION_ERROR',
+        message: 'Only image files are allowed.',
         details: [
           {
             path: 'reference_images',
@@ -97,8 +110,10 @@ async function handleCreateCommission(req, res) {
 
   return sendJson(res, 201, {
     success: true,
-    commission: normalizeCommission(commission),
-    notifications,
+    data: {
+      commission: normalizeCommission(commission),
+      notifications,
+    },
   })
 }
 
@@ -110,12 +125,48 @@ async function handleFetchCommissions(req, res) {
   const commissions = await fetchCommissions()
   return sendJson(res, 200, {
     success: true,
-    commissions: commissions.map(normalizeCommission),
+    data: commissions.map(normalizeCommission),
+  })
+}
+
+async function handleUpdateCommissionStatus(req, res) {
+  if (!requireAdminAuth(req, res)) {
+    return null
+  }
+
+  const commissionId = getCommissionId(req)
+  if (!Number.isInteger(commissionId) || commissionId <= 0) {
+    return sendJson(res, 400, {
+      success: false,
+      error: 'INVALID_COMMISSION_ID',
+      message: 'A valid commission id is required.',
+    })
+  }
+
+  const body = await readJson(req)
+  const payload = validateWithSchema(commissionStatusUpdateSchema, body)
+  const existingCommission = await fetchCommissionById(commissionId)
+
+  if (!existingCommission) {
+    return sendJson(res, 404, {
+      success: false,
+      error: 'COMMISSION_NOT_FOUND',
+      message: 'Commission not found.',
+    })
+  }
+
+  const updatedCommission = await updateCommissionById(commissionId, payload)
+
+  return sendJson(res, 200, {
+    success: true,
+    data: normalizeCommission(updatedCommission),
   })
 }
 
 export default async function handler(req, res) {
   try {
+    const action = getAction(req)
+
     if (req.method === 'POST') {
       return await handleCreateCommission(req, res)
     }
@@ -124,7 +175,11 @@ export default async function handler(req, res) {
       return await handleFetchCommissions(req, res)
     }
 
-    return methodNotAllowed(res, ['GET', 'POST'])
+    if ((req.method === 'PATCH' || req.method === 'PUT') && action === 'status') {
+      return await handleUpdateCommissionStatus(req, res)
+    }
+
+    return methodNotAllowed(res, ['GET', 'POST', 'PATCH', 'PUT'])
   } catch (error) {
     if (error.validationIssues) {
       return sendValidationError(res, error.validationIssues)
@@ -132,6 +187,7 @@ export default async function handler(req, res) {
 
     return sendJson(res, error.status || 500, {
       success: false,
+      error: error.error || 'COMMISSION_REQUEST_FAILED',
       message: error.message || 'Unable to process commission request.',
     })
   }

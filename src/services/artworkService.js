@@ -1,6 +1,8 @@
 import { backendAdminRequest } from './backendApiService'
 import { supabaseRequest } from './supabaseClient'
-import { getPrimaryArtworkImage, normalizeArtworkImages } from '../utils/artworkImages'
+
+let artworksCache = null
+const artworkByIdCache = new Map()
 
 function withoutCategory(payload) {
   const { category: _category, ...rest } = payload
@@ -8,20 +10,15 @@ function withoutCategory(payload) {
 }
 
 function normalizeArtwork(artwork) {
-  const images = normalizeArtworkImages(
-    Array.isArray(artwork.images) && artwork.images.length > 0
-      ? artwork.images
-      : artwork.image
-        ? [artwork.image]
-        : [],
-  )
-  const primaryImage = getPrimaryArtworkImage(images, artwork.image)
+  const images = Array.isArray(artwork.images)
+    ? artwork.images.filter((image) => typeof image === 'string' && image.trim())
+    : []
 
   return {
     ...artwork,
     price: Number(artwork.price),
     images,
-    image: primaryImage,
+    is_featured: artwork.is_featured === true,
     medium: artwork.medium || 'Not specified',
     size: artwork.size || 'Not specified',
     quantity: Number.isFinite(Number(artwork.quantity)) ? Number(artwork.quantity) : 1,
@@ -32,7 +29,11 @@ function normalizeArtwork(artwork) {
 }
 
 function createArtworkPayload(artworkInput) {
-  const parsedImages = normalizeArtworkImages(artworkInput.images)
+  const parsedImages = Array.isArray(artworkInput.images)
+    ? artworkInput.images
+        .map((image) => (typeof image === 'string' ? image.trim() : ''))
+        .filter(Boolean)
+    : []
 
   const normalizedCategory = String(artworkInput.category || '').trim().toLowerCase()
   const category = normalizedCategory === 'sketch' ? 'sketch' : 'canvas'
@@ -41,9 +42,10 @@ function createArtworkPayload(artworkInput) {
     ...artworkInput,
     price: Number(artworkInput.price),
     images: parsedImages,
-    image: getPrimaryArtworkImage(parsedImages),
+    image: parsedImages[0] || '',
     medium: artworkInput.medium || '',
     size: artworkInput.size || '',
+    is_featured: artworkInput.is_featured === true,
     quantity: Number.isFinite(Number(artworkInput.quantity))
       ? Math.max(0, Math.trunc(Number(artworkInput.quantity)))
       : 1,
@@ -75,13 +77,36 @@ function createArtworkPayload(artworkInput) {
 }
 
 export async function fetchArtworks() {
+  if (artworksCache) {
+    return artworksCache
+  }
+
   const data = await supabaseRequest('artworks?select=*&order=id.asc')
-  return data.map(normalizeArtwork)
+  const normalized = data.map(normalizeArtwork)
+  artworksCache = normalized
+
+  normalized.forEach((artwork) => {
+    artworkByIdCache.set(Number(artwork.id), artwork)
+  })
+
+  return normalized
 }
 
 export async function fetchSingleArtwork(id) {
+  const normalizedId = Number(id)
+
+  if (artworkByIdCache.has(normalizedId)) {
+    return artworkByIdCache.get(normalizedId)
+  }
+
   const data = await supabaseRequest(`artworks?select=*&id=eq.${Number(id)}&limit=1`)
-  return data[0] ? normalizeArtwork(data[0]) : null
+  const normalized = data[0] ? normalizeArtwork(data[0]) : null
+
+  if (normalized) {
+    artworkByIdCache.set(normalizedId, normalized)
+  }
+
+  return normalized
 }
 
 export async function addArtwork(artworkInput) {
@@ -92,7 +117,10 @@ export async function addArtwork(artworkInput) {
     body: JSON.stringify(requestPayload),
   })
 
-  return normalizeArtwork(response.artwork)
+  const normalized = normalizeArtwork(response.data)
+  artworksCache = null
+  artworkByIdCache.set(Number(normalized.id), normalized)
+  return normalized
 }
 
 export async function updateArtwork(id, artworkInput) {
@@ -103,7 +131,10 @@ export async function updateArtwork(id, artworkInput) {
     body: JSON.stringify(requestPayload),
   })
 
-  return normalizeArtwork(response.artwork)
+  const normalized = normalizeArtwork(response.data)
+  artworksCache = null
+  artworkByIdCache.set(Number(normalized.id), normalized)
+  return normalized
 }
 
 export async function updateArtworkStatus(id, status) {
@@ -112,13 +143,19 @@ export async function updateArtworkStatus(id, status) {
     body: JSON.stringify({ status }),
   })
 
-  return normalizeArtwork(response.artwork)
+  const normalized = normalizeArtwork(response.data)
+  artworksCache = null
+  artworkByIdCache.set(Number(normalized.id), normalized)
+  return normalized
 }
 
 export async function deleteArtwork(id) {
   await backendAdminRequest(`/api/artworks/${Number(id)}`, {
     method: 'DELETE',
   })
+
+  artworksCache = null
+  artworkByIdCache.delete(Number(id))
 
   return { id }
 }

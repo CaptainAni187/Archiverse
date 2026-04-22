@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { normalizeArtworkImages } from './artworkImages.js'
 import { sendJson } from './http.js'
 import { ORDER_STATUSES } from './orderLifecycle.js'
 
@@ -22,19 +21,10 @@ const optionalTrimmedString = z.preprocess(trimString, z.string().optional()).tr
   (value) => value || '',
 )
 
-const artworkImageSchema = z.object({
-  url: z.string().trim().url('Each image must have a valid URL.'),
-  is_primary: z.boolean(),
-})
-
 const artworkImagesSchema = z
-  .preprocess((value) => normalizeArtworkImages(value), z.array(artworkImageSchema))
-  .refine((images) => images.length >= 1 && images.length <= 5, {
-    message: 'Images must contain between 1 and 5 items.',
-  })
-  .refine((images) => images.filter((image) => image.is_primary).length === 1, {
-    message: 'Exactly one image must be marked as primary.',
-  })
+  .array(z.string().trim().url('Each image must have a valid URL.'))
+  .min(1, 'Images must contain between 1 and 5 items.')
+  .max(5, 'Images must contain between 1 and 5 items.')
 
 export const artworkPayloadSchema = z.object({
   title: nonEmptyString,
@@ -43,6 +33,7 @@ export const artworkPayloadSchema = z.object({
   medium: optionalTrimmedString,
   size: optionalTrimmedString,
   status: artworkStatusSchema.default('available'),
+  is_featured: z.boolean().default(false),
   quantity: z.coerce.number().int().min(0, 'Quantity cannot be negative.').default(1),
   category: z
     .preprocess((value) => String(value || '').trim().toLowerCase(), artworkCategorySchema)
