@@ -232,3 +232,85 @@ export async function createTestimonial(payload) {
 
   return response?.[0] || null
 }
+
+export async function fetchAdminByEmail(email) {
+  const encodedEmail = encodeURIComponent(String(email || '').trim().toLowerCase())
+  const response = await supabaseAdminRequest(
+    `admins?select=*&email=eq.${encodedEmail}&limit=1`,
+  )
+
+  return response?.[0] || null
+}
+
+export async function fetchAdminById(id) {
+  const response = await supabaseAdminRequest(
+    `admins?select=*&id=eq.${Number(id)}&limit=1`,
+  )
+
+  return response?.[0] || null
+}
+
+export async function updateAdminPasswordHash(id, passwordHash) {
+  const response = await supabaseAdminRequest(`admins?id=eq.${Number(id)}`, {
+    method: 'PATCH',
+    headers: {
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({
+      password_hash: passwordHash,
+      updated_at: new Date().toISOString(),
+    }),
+  })
+
+  return response?.[0] || null
+}
+
+export async function createAdminSession(payload) {
+  const response = await supabaseAdminRequest('admin_sessions', {
+    method: 'POST',
+    headers: {
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return response?.[0] || null
+}
+
+export async function fetchAdminSessionById(id) {
+  const response = await supabaseAdminRequest(
+    `admin_sessions?select=*&id=eq.${Number(id)}&limit=1`,
+  )
+
+  return response?.[0] || null
+}
+
+export async function updateAdminSessionById(id, payload) {
+  const response = await supabaseAdminRequest(`admin_sessions?id=eq.${Number(id)}`, {
+    method: 'PATCH',
+    headers: {
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return response?.[0] || null
+}
+
+export async function createAdminActivityLog(payload) {
+  const response = await supabaseAdminRequest('admin_activity_logs', {
+    method: 'POST',
+    headers: {
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return response?.[0] || null
+}
+
+export async function fetchAdminActivityLogs(limit = 50) {
+  return supabaseAdminRequest(
+    `admin_activity_logs?select=*&order=created_at.desc&limit=${Number(limit)}`,
+  )
+}

@@ -54,7 +54,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    if (!requireAdminAuth(req, res)) {
+    const session = await requireAdminAuth(req, res)
+    if (!session) {
       return null
     }
 
@@ -65,6 +66,7 @@ export default async function handler(req, res) {
       return sendJson(res, 400, {
         success: false,
         error: 'VALIDATION_ERROR',
+        message: 'Images must contain between 1 and 5 files.',
         details: [
           {
             path: 'images',
@@ -83,6 +85,7 @@ export default async function handler(req, res) {
       return sendJson(res, 400, {
         success: false,
         error: 'VALIDATION_ERROR',
+        message: 'Only image files are allowed.',
         details: [
           {
             path: 'images',
@@ -98,10 +101,14 @@ export default async function handler(req, res) {
     return sendJson(res, 200, {
       success: true,
       images: uploadedImages,
+      data: {
+        images: uploadedImages,
+      },
     })
   } catch (error) {
     return sendJson(res, error.status || 500, {
       success: false,
+      error: error.error || 'UPLOAD_REQUEST_FAILED',
       message: error.message || 'Unable to upload artwork images.',
     })
   }

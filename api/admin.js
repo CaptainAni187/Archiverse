@@ -2,11 +2,14 @@ import {
   consumePasswordResetToken,
   createAdminToken,
   createPasswordResetToken,
-  getAdminEmail,
+  createAdminSessionRecord,
+  findAdminByEmail,
+  logoutAdminSession,
   requireAdminAuth,
   updateAdminPassword,
   validateAdminCredentials,
 } from './_lib/adminSession.js'
+import { fetchAdminActivity, logAdminActivity } from './_lib/adminActivity.js'
 import { getClientIp, consumeRateLimit } from './_lib/rateLimit.js'
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
 import { fetchOrderAnalyticsRows } from './_lib/supabaseAdmin.js'
@@ -15,6 +18,28 @@ const REVENUE_STATUSES = ['advance_paid', 'processing', 'shipped', 'delivered']
 
 function getAction(req) {
   return String(req.query?.action || '').trim().toLowerCase()
+}
+
+function getPathname(req) {
+  const rawUrl = String(req.url || '').trim()
+
+  if (!rawUrl) {
+    return ''
+  }
+
+  try {
+    return new URL(rawUrl, 'http://localhost').pathname.toLowerCase()
+  } catch {
+    return rawUrl.split('?')[0].toLowerCase()
+  }
+}
+
+function matchesAdminRoute(pathname, route) {
+  if (!pathname || !route) {
+    return false
+  }
+
+  return pathname === route || pathname.endsWith(route)
 }
 
 function toDateKey(value) {
@@ -90,7 +115,7 @@ async function handleLogin(req, res) {
     })
   }
 
-  if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD || !process.env.ADMIN_SESSION_SECRET) {
+  if (!process.env.ADMIN_SESSION_SECRET) {
     return sendJson(res, 500, {
       success: false,
       error: 'ADMIN_CONFIG_MISSING',
@@ -98,9 +123,9 @@ async function handleLogin(req, res) {
     })
   }
 
-  const isValid = await validateAdminCredentials(email, password)
+  const admin = await validateAdminCredentials(email, password)
 
-  if (!isValid) {
+  if (!admin) {
     console.warn(`[admin-auth] Failed login attempt for ${email || 'unknown-email'} from ${ipAddress}.`)
     return sendJson(res, 401, {
       success: false,
@@ -109,12 +134,37 @@ async function handleLogin(req, res) {
     })
   }
 
-  const token = createAdminToken()
+  const session = await createAdminSessionRecord(admin, req)
+  const token = createAdminToken(admin, session)
+
+  await logAdminActivity(
+    {
+      admin_id: admin.id,
+      session_id: session.id,
+      name: admin.name,
+      email: admin.email,
+    },
+    {
+      action_type: 'login',
+      resource_type: 'admin_session',
+      resource_id: session.id || session.session_token_id,
+      details: {
+        auth_source: admin.auth_source,
+      },
+    },
+  )
+
   return sendJson(res, 200, {
     success: true,
     token,
     data: {
       token,
+      admin: {
+        id: admin.id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role,
+      },
     },
   })
 }
@@ -124,9 +174,17 @@ async function handleLogout(req, res) {
     return methodNotAllowed(res, ['POST'])
   }
 
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
+
+  await logoutAdminSession(session)
+  await logAdminActivity(session, {
+    action_type: 'logout',
+    resource_type: 'admin_session',
+    resource_id: session.session_id || session.session_token_id,
+  })
 
   return sendJson(res, 200, { success: true, data: { loggedOut: true } })
 }
@@ -136,7 +194,7 @@ async function handleMe(req, res) {
     return methodNotAllowed(res, ['GET'])
   }
 
-  const session = requireAdminAuth(req, res)
+  const session = await requireAdminAuth(req, res)
   if (!session) {
     return null
   }
@@ -146,12 +204,32 @@ async function handleMe(req, res) {
     data: {
       authenticated: true,
       admin: {
+        id: session.admin_id,
+        name: session.name,
         email: session.email,
         role: session.role,
       },
+      login_at: session.login_at || null,
       expires_at:
         typeof session.exp === 'number' ? new Date(session.exp * 1000).toISOString() : null,
     },
+  })
+}
+
+async function handleActivity(req, res) {
+  if (req.method !== 'GET') {
+    return methodNotAllowed(res, ['GET'])
+  }
+
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
+    return null
+  }
+
+  const activity = await fetchAdminActivity(50)
+  return sendJson(res, 200, {
+    success: true,
+    data: activity,
   })
 }
 
@@ -163,7 +241,9 @@ async function handleForgotPassword(req, res) {
   const body = await readJson(req)
   const email = body.email?.trim()
 
-  if (!email || email !== getAdminEmail()) {
+  const admin = await findAdminByEmail(email)
+
+  if (!email || !admin) {
     return sendJson(res, 404, {
       success: false,
       error: 'EMAIL_NOT_FOUND',
@@ -171,14 +251,14 @@ async function handleForgotPassword(req, res) {
     })
   }
 
-  const resetToken = createPasswordResetToken(email)
+  const resetToken = createPasswordResetToken(admin)
 
   return sendJson(res, 200, {
     success: true,
     data: {
       resetToken,
       message:
-        'Use this temporary reset token to verify ownership, then update ADMIN_PASSWORD in backend env.',
+        'Use this temporary reset token to verify ownership, then submit the password reset request.',
     },
   })
 }
@@ -201,14 +281,6 @@ async function handleResetPassword(req, res) {
     })
   }
 
-  if (email !== getAdminEmail()) {
-    return sendJson(res, 401, {
-      success: false,
-      error: 'INVALID_RESET_REQUEST',
-      message: 'Invalid reset request.',
-    })
-  }
-
   if (newPassword.length < 8) {
     return sendJson(res, 400, {
       success: false,
@@ -217,8 +289,8 @@ async function handleResetPassword(req, res) {
     })
   }
 
-  const tokenValid = consumePasswordResetToken(token, email)
-  if (!tokenValid) {
+  const admin = consumePasswordResetToken(token, email)
+  if (!admin) {
     return sendJson(res, 401, {
       success: false,
       error: 'INVALID_RESET_TOKEN',
@@ -226,13 +298,12 @@ async function handleResetPassword(req, res) {
     })
   }
 
-  updateAdminPassword(newPassword)
+  await updateAdminPassword(admin, newPassword)
 
   return sendJson(res, 200, {
     success: true,
     data: {
-      message:
-        'Password reset successful for current runtime. Persist in backend env for long-term usage.',
+      message: 'Password reset successful.',
     },
   })
 }
@@ -242,7 +313,8 @@ async function handleDashboard(req, res) {
     return methodNotAllowed(res, ['GET'])
   }
 
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -255,7 +327,39 @@ async function handleDashboard(req, res) {
 
 export default async function handler(req, res) {
   try {
+    const pathname = getPathname(req)
     const action = getAction(req)
+
+    if (matchesAdminRoute(pathname, '/login') && req.method === 'POST') {
+      return await handleLogin(req, res)
+    }
+
+    if (matchesAdminRoute(pathname, '/logout') && req.method === 'POST') {
+      return await handleLogout(req, res)
+    }
+
+    if (
+      (matchesAdminRoute(pathname, '/me') || matchesAdminRoute(pathname, '/session')) &&
+      req.method === 'GET'
+    ) {
+      return await handleMe(req, res)
+    }
+
+    if (matchesAdminRoute(pathname, '/forgot-password')) {
+      return await handleForgotPassword(req, res)
+    }
+
+    if (matchesAdminRoute(pathname, '/reset-password')) {
+      return await handleResetPassword(req, res)
+    }
+
+    if (matchesAdminRoute(pathname, '/dashboard')) {
+      return await handleDashboard(req, res)
+    }
+
+    if (matchesAdminRoute(pathname, '/activity')) {
+      return await handleActivity(req, res)
+    }
 
     if (action === 'login') {
       return await handleLogin(req, res)
@@ -281,10 +385,14 @@ export default async function handler(req, res) {
       return await handleDashboard(req, res)
     }
 
-    return sendJson(res, 404, {
+    if (action === 'activity') {
+      return await handleActivity(req, res)
+    }
+
+    return sendJson(res, 405, {
       success: false,
-      error: 'ROUTE_NOT_FOUND',
-      message: 'Admin route not found.',
+      error: 'METHOD_NOT_ALLOWED',
+      message: 'Method not allowed.',
     })
   } catch (error) {
     return sendJson(res, error.status || 500, {

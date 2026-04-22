@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useOrderContext } from '../state/useOrderContext'
 import { fetchSingleArtwork } from '../services/artworkService'
@@ -22,6 +22,8 @@ function Product() {
   const [errorMessage, setErrorMessage] = useState('')
   const [activeImage, setActiveImage] = useState('')
   const [isZoomOpen, setIsZoomOpen] = useState(false)
+  const [isImageHovering, setIsImageHovering] = useState(false)
+  const [hoverZoomOrigin, setHoverZoomOrigin] = useState({ x: '50%', y: '50%' })
   const [retryKey, setRetryKey] = useState(0)
 
   usePageMeta({
@@ -57,6 +59,45 @@ function Product() {
     loadArtwork()
   }, [id, retryKey])
 
+  const galleryImages = Array.isArray(artwork?.images)
+    ? artwork.images
+    : artwork?.image
+      ? [artwork.image]
+      : []
+  const primaryImage = galleryImages[0] || ''
+  const currentImage = activeImage || primaryImage
+  const activeImageIndex = galleryImages.indexOf(currentImage)
+  const safeImageIndex = activeImageIndex >= 0 ? activeImageIndex : 0
+
+  const goToPreviousImage = () => {
+    if (galleryImages.length <= 1) {
+      return
+    }
+
+    const nextIndex = safeImageIndex === 0 ? galleryImages.length - 1 : safeImageIndex - 1
+    setActiveImage(galleryImages[nextIndex])
+  }
+
+  const goToNextImage = () => {
+    if (galleryImages.length <= 1) {
+      return
+    }
+
+    const nextIndex = safeImageIndex === galleryImages.length - 1 ? 0 : safeImageIndex + 1
+    setActiveImage(galleryImages[nextIndex])
+  }
+
+  const handleImageMouseMove = (event) => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const relativeX = ((event.clientX - bounds.left) / bounds.width) * 100
+    const relativeY = ((event.clientY - bounds.top) / bounds.height) * 100
+
+    setHoverZoomOrigin({
+      x: `${Math.min(100, Math.max(0, relativeX))}%`,
+      y: `${Math.min(100, Math.max(0, relativeY))}%`,
+    })
+  }
+
   useEffect(() => {
     if (!isZoomOpen) {
       return undefined
@@ -66,12 +107,30 @@ function Product() {
       if (event.key === 'Escape') {
         setIsZoomOpen(false)
       }
+      if (galleryImages.length > 1 && event.key === 'ArrowLeft') {
+        event.preventDefault()
+        setActiveImage((previous) => {
+          const currentIndex = galleryImages.indexOf(previous)
+          const resolvedIndex = currentIndex >= 0 ? currentIndex : 0
+          const nextIndex = resolvedIndex === 0 ? galleryImages.length - 1 : resolvedIndex - 1
+          return galleryImages[nextIndex]
+        })
+      }
+      if (galleryImages.length > 1 && event.key === 'ArrowRight') {
+        event.preventDefault()
+        setActiveImage((previous) => {
+          const currentIndex = galleryImages.indexOf(previous)
+          const resolvedIndex = currentIndex >= 0 ? currentIndex : 0
+          const nextIndex = resolvedIndex === galleryImages.length - 1 ? 0 : resolvedIndex + 1
+          return galleryImages[nextIndex]
+        })
+      }
     }
 
     window.addEventListener('keydown', onKeyDown)
 
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isZoomOpen])
+  }, [galleryImages, isZoomOpen])
 
   if (loading) {
     return (
@@ -103,8 +162,6 @@ function Product() {
     navigate('/checkout', { state: { product: artwork } })
   }
   const isSoldOut = artwork.status === 'sold' || Number(artwork.quantity) <= 0
-  const galleryImages = useMemo(() => artwork.images || [], [artwork.id, artwork.images])
-  const primaryImage = galleryImages[0] || ''
 
   return (
     <section className="page-flow page-with-header-gap">
@@ -113,15 +170,22 @@ function Product() {
           <div className="product-image-wrap">
             <button
               type="button"
-              className="product-zoom-trigger"
+              className={`product-zoom-trigger ${isImageHovering ? 'is-hovering' : ''}`}
               onClick={() => setIsZoomOpen(true)}
+              onMouseEnter={() => setIsImageHovering(true)}
+              onMouseLeave={() => setIsImageHovering(false)}
+              onMouseMove={handleImageMouseMove}
               aria-label={`Open full resolution view of ${artwork.title}`}
             >
-              {activeImage || primaryImage ? (
+              {currentImage ? (
                 <img
-                  src={activeImage || primaryImage}
+                  src={currentImage}
                   alt={artwork.title}
                   className="product-image"
+                  style={{
+                    '--product-zoom-origin-x': hoverZoomOrigin.x,
+                    '--product-zoom-origin-y': hoverZoomOrigin.y,
+                  }}
                   loading="eager"
                   decoding="async"
                   fetchPriority="high"
@@ -130,6 +194,26 @@ function Product() {
                 />
               ) : null}
             </button>
+            {galleryImages.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  className="artwork-carousel__arrow artwork-carousel__arrow--left product-gallery-arrow"
+                  onClick={goToPreviousImage}
+                  aria-label="Previous artwork image"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  className="artwork-carousel__arrow artwork-carousel__arrow--right product-gallery-arrow"
+                  onClick={goToNextImage}
+                  aria-label="Next artwork image"
+                >
+                  →
+                </button>
+              </>
+            ) : null}
             {isSoldOut ? (
               <span className="badge sold product-badge">Sold Out</span>
             ) : null}
@@ -199,8 +283,34 @@ function Product() {
           >
             Close
           </button>
+          {galleryImages.length > 1 ? (
+            <>
+              <button
+                type="button"
+                className="artwork-carousel__arrow artwork-carousel__arrow--left image-zoom-arrow"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  goToPreviousImage()
+                }}
+                aria-label="Previous artwork image"
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                className="artwork-carousel__arrow artwork-carousel__arrow--right image-zoom-arrow"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  goToNextImage()
+                }}
+                aria-label="Next artwork image"
+              >
+                →
+              </button>
+            </>
+          ) : null}
           <img
-            src={activeImage || primaryImage}
+            src={currentImage}
             alt={artwork.title}
             className="image-zoom-full"
             onClick={(event) => event.stopPropagation()}

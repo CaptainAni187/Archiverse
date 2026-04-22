@@ -7,12 +7,20 @@ function formatPrice(price) {
 
 function StoreCard({ artwork }) {
   const navigate = useNavigate()
-  const images = useMemo(() => artwork.images || [], [artwork.id, artwork.images])
+  const images = useMemo(
+    () =>
+      Array.isArray(artwork.images)
+        ? artwork.images
+        : artwork.image
+          ? [artwork.image]
+          : [],
+    [artwork.id, artwork.image, artwork.images],
+  )
   const primaryImage = images[0]
 
   return (
     <article
-      className="store-card"
+      className="store-card artwork-item"
       onClick={() => navigate(`/product/${artwork.id}`)}
       role="button"
       tabIndex={0}

@@ -7,7 +7,15 @@ function formatPrice(price) {
 
 function ArtworkCard({ artwork }) {
   const navigate = useNavigate()
-  const images = useMemo(() => artwork.images || [], [artwork.id, artwork.images])
+  const images = useMemo(
+    () =>
+      Array.isArray(artwork.images)
+        ? artwork.images
+        : artwork.image
+          ? [artwork.image]
+          : [],
+    [artwork.id, artwork.image, artwork.images],
+  )
   const primaryImage = images[0]
 
   return (

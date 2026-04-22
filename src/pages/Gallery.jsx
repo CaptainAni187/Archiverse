@@ -157,6 +157,7 @@ function Gallery() {
           <input
             type="number"
             min="0"
+            step="200"
             inputMode="numeric"
             placeholder="No minimum"
             value={minPrice}
@@ -169,6 +170,7 @@ function Gallery() {
           <input
             type="number"
             min="0"
+            step="200"
             inputMode="numeric"
             placeholder="No maximum"
             value={maxPrice}
@@ -199,7 +201,7 @@ function Gallery() {
       {invalidPriceRange ? null : filteredArtworks.length === 0 ? (
         <p className="status-message">No artworks match the selected filters.</p>
       ) : (
-        <div className="store-grid">
+        <div className="store-grid artwork-grid">
           {filteredArtworks.map((artwork) => (
             <StoreCard key={artwork.id} artwork={artwork} />
           ))}

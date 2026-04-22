@@ -1,4 +1,5 @@
 import { requireAdminAuth } from './_lib/adminSession.js'
+import { logAdminActivity } from './_lib/adminActivity.js'
 import { getBackendConfig } from './_lib/env.js'
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
 import { notifyAdmin, notifyCustomer } from './_lib/notifications.js'
@@ -327,7 +328,8 @@ async function handleLookupOrders(req, res) {
   const paymentId = String(req.query?.payment_id || '').trim()
 
   if (!paymentId) {
-    if (!requireAdminAuth(req, res)) {
+    const session = await requireAdminAuth(req, res)
+    if (!session) {
       return null
     }
 
@@ -385,7 +387,8 @@ async function handleLookupOrderByCode(req, res) {
 }
 
 async function handleUpdateOrderStatus(req, res) {
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -427,6 +430,17 @@ async function handleUpdateOrderStatus(req, res) {
     orderId,
     getOrderStatusTimestampPatch(existingOrder.payment_status, payload.payment_status),
   )
+
+  await logAdminActivity(session, {
+    action_type: 'order_status_changed',
+    resource_type: 'order',
+    resource_id: orderId,
+    details: {
+      order_code: existingOrder.order_code || null,
+      previous_status: existingOrder.payment_status,
+      next_status: payload.payment_status,
+    },
+  })
 
   return sendJson(res, 200, {
     success: true,

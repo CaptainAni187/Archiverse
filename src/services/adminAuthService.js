@@ -69,22 +69,27 @@ export async function logoutAdmin() {
 
 export async function isAdminAuthenticated() {
   try {
-    const token = getAdminToken()
-    if (!token) {
-      return false
-    }
-
-    const response = await fetch('/api/admin/me', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-    const payload = await parseAuthResponse(response)
+    const payload = await fetchAdminSession()
     return payload.data?.authenticated === true
   } catch {
     localStorage.removeItem(ADMIN_TOKEN_KEY)
     return false
   }
+}
+
+export async function fetchAdminSession() {
+  const token = getAdminToken()
+  if (!token) {
+    throw new Error('Admin authentication required.')
+  }
+
+  const response = await fetch('/api/admin/me', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  return parseAuthResponse(response)
 }
 
 export async function requestAdminPasswordReset(email) {

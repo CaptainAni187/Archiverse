@@ -50,7 +50,10 @@ function Sketch() {
   const sketchImages = useMemo(
     () =>
       artworks.map((artwork) => ({
-        src: Array.isArray(artwork.images) ? artwork.images[0] || '' : '',
+        src:
+          (Array.isArray(artwork.images) ? artwork.images[0] || '' : '') ||
+          artwork.image ||
+          '',
         title: artwork.title,
         medium: artwork.medium,
       })),
@@ -71,7 +74,7 @@ function Sketch() {
       ) : null}
 
       {!loading && !errorMessage && artworks.length > 0 ? (
-        <ArtworkCarousel images={sketchImages} interval={5000} overlayPosition="left" />
+        <ArtworkCarousel images={sketchImages} interval={3000} overlayPosition="left" />
       ) : null}
     </section>
   )

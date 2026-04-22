@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { createOrder } from '../services/orderService'
 import { useOrderContext } from '../state/useOrderContext'
@@ -171,6 +171,10 @@ function Checkout() {
     }
   }, [navigate, setOrderConfirmation, setOrderDetails])
 
+  const checkoutImage = Array.isArray(selectedProduct?.images)
+    ? selectedProduct.images[0] || ''
+    : selectedProduct?.image || ''
+
   if (!selectedProduct) {
     return (
       <section className="page-flow">
@@ -189,10 +193,6 @@ function Checkout() {
   const advanceAmount = deliveryDetails.advanceAmount
   const remainingAmount = deliveryDetails.remainingAmount
   const deliveryEstimate = deliveryDetails.deliveryEstimate
-  const checkoutImage = useMemo(
-    () => (Array.isArray(selectedProduct.images) ? selectedProduct.images[0] || '' : ''),
-    [selectedProduct],
-  )
 
   const onChange = (event) => {
     const { name, value } = event.target

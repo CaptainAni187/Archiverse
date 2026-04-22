@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { requireAdminAuth } from './_lib/adminSession.js'
+import { logAdminActivity } from './_lib/adminActivity.js'
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
 import { supabaseAdminRequest } from './_lib/supabaseAdmin.js'
 
@@ -131,7 +132,8 @@ async function handleGet(req, res) {
 }
 
 async function handlePost(req, res) {
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -143,6 +145,15 @@ async function handlePost(req, res) {
     is_visible: payload.is_visible ?? true,
   })
 
+  await logAdminActivity(session, {
+    action_type: 'testimonial_added',
+    resource_type: 'testimonial',
+    resource_id: testimonial?.id,
+    details: {
+      name: testimonial?.name || payload.name,
+    },
+  })
+
   return sendJson(res, 201, {
     success: true,
     data: testimonial,
@@ -150,7 +161,8 @@ async function handlePost(req, res) {
 }
 
 async function handlePatch(req, res) {
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -175,6 +187,13 @@ async function handlePatch(req, res) {
     })
   }
 
+  await logAdminActivity(session, {
+    action_type: 'testimonial_updated',
+    resource_type: 'testimonial',
+    resource_id: testimonialId,
+    details: payload,
+  })
+
   return sendJson(res, 200, {
     success: true,
     data: testimonial,
@@ -182,7 +201,8 @@ async function handlePatch(req, res) {
 }
 
 async function handleDelete(req, res) {
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -196,6 +216,11 @@ async function handleDelete(req, res) {
   }
 
   await deleteTestimonial(testimonialId)
+  await logAdminActivity(session, {
+    action_type: 'testimonial_deleted',
+    resource_type: 'testimonial',
+    resource_id: testimonialId,
+  })
   return sendJson(res, 200, {
     success: true,
     data: { id: testimonialId },

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { requireAdminAuth } from './_lib/adminSession.js'
+import { logAdminActivity } from './_lib/adminActivity.js'
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
 import {
   createArtwork,
@@ -48,14 +49,18 @@ function withoutOptionalArtworkColumns(payload) {
 }
 
 function normalizeArtwork(artwork) {
-  const images = Array.isArray(artwork.images)
-    ? artwork.images.filter((image) => typeof image === 'string' && image.trim())
-    : []
+  const images = [
+    ...(Array.isArray(artwork.images) ? artwork.images : []),
+    typeof artwork.image === 'string' ? artwork.image : '',
+  ].filter((image, index, collection) => {
+    return typeof image === 'string' && image.trim() && collection.indexOf(image) === index
+  })
 
   return {
     ...artwork,
     price: Number(artwork.price),
     images,
+    image: images[0] || '',
     is_featured: artwork.is_featured === true,
     medium: artwork.medium || 'Not specified',
     size: artwork.size || 'Not specified',
@@ -117,7 +122,8 @@ async function handleFetchArtwork(req, res) {
 }
 
 async function handleCreateArtwork(req, res) {
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -128,6 +134,15 @@ async function handleCreateArtwork(req, res) {
     const artwork = await createArtwork({
       ...withStockStatus(payload),
       image: payload.images[0],
+    })
+
+    await logAdminActivity(session, {
+      action_type: 'artwork_added',
+      resource_type: 'artwork',
+      resource_id: artwork?.id,
+      details: {
+        title: artwork?.title || payload.title,
+      },
     })
 
     return sendJson(res, 201, {
@@ -142,6 +157,15 @@ async function handleCreateArtwork(req, res) {
         image: payload.images[0],
       })
 
+      await logAdminActivity(session, {
+        action_type: 'artwork_added',
+        resource_type: 'artwork',
+        resource_id: artwork?.id,
+        details: {
+          title: artwork?.title || payload.title,
+        },
+      })
+
       return sendJson(res, 201, {
         success: true,
         data: normalizeArtwork(artwork),
@@ -153,7 +177,8 @@ async function handleCreateArtwork(req, res) {
 }
 
 async function handleUpdateArtwork(req, res) {
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -175,6 +200,15 @@ async function handleUpdateArtwork(req, res) {
       image: payload.images[0],
     })
 
+    await logAdminActivity(session, {
+      action_type: 'artwork_edited',
+      resource_type: 'artwork',
+      resource_id: artworkId,
+      details: {
+        title: artwork?.title || payload.title,
+      },
+    })
+
     return sendJson(res, 200, {
       success: true,
       data: normalizeArtwork(artwork),
@@ -190,6 +224,15 @@ async function handleUpdateArtwork(req, res) {
         },
       )
 
+      await logAdminActivity(session, {
+        action_type: 'artwork_edited',
+        resource_type: 'artwork',
+        resource_id: artworkId,
+        details: {
+          title: artwork?.title || payload.title,
+        },
+      })
+
       return sendJson(res, 200, {
         success: true,
         data: normalizeArtwork(artwork),
@@ -201,7 +244,8 @@ async function handleUpdateArtwork(req, res) {
 }
 
 async function handleUpdateArtworkStatus(req, res) {
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -218,6 +262,16 @@ async function handleUpdateArtworkStatus(req, res) {
   const payload = validateWithSchema(artworkStatusSchema, body)
   const artwork = await updateArtwork(artworkId, payload)
 
+  await logAdminActivity(session, {
+    action_type: 'artwork_status_changed',
+    resource_type: 'artwork',
+    resource_id: artworkId,
+    details: {
+      status: payload.status,
+      title: artwork?.title || null,
+    },
+  })
+
   return sendJson(res, 200, {
     success: true,
     data: normalizeArtwork(artwork),
@@ -225,7 +279,8 @@ async function handleUpdateArtworkStatus(req, res) {
 }
 
 async function handleDeleteArtwork(req, res) {
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -238,7 +293,18 @@ async function handleDeleteArtwork(req, res) {
     })
   }
 
+  const existingArtwork = await fetchArtworkById(artworkId)
   await deleteArtwork(artworkId)
+
+  await logAdminActivity(session, {
+    action_type: 'artwork_deleted',
+    resource_type: 'artwork',
+    resource_id: artworkId,
+    details: {
+      title: existingArtwork?.title || null,
+    },
+  })
+
   return sendJson(res, 200, {
     success: true,
     data: { id: artworkId },

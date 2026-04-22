@@ -17,9 +17,11 @@ function AdminLogin() {
   const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [resetToken, setResetToken] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
   const [resetMessage, setResetMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -104,12 +106,27 @@ function AdminLogin() {
         </label>
         <label>
           Password
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
+          <div className="password-field">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="current-password"
+              spellCheck={false}
+              required
+            />
+            <button
+              type="button"
+              className="password-toggle"
+              onClick={() => setShowPassword((current) => !current)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </label>
         <button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Signing In...' : 'Login'}
@@ -144,12 +161,27 @@ function AdminLogin() {
         </label>
         <label>
           New Password
-          <input
-            type="password"
-            value={newPassword}
-            onChange={(event) => setNewPassword(event.target.value)}
-            required
-          />
+          <div className="password-field">
+            <input
+              type={showNewPassword ? 'text' : 'password'}
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="new-password"
+              spellCheck={false}
+              required
+            />
+            <button
+              type="button"
+              className="password-toggle"
+              onClick={() => setShowNewPassword((current) => !current)}
+              aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+              aria-pressed={showNewPassword}
+            >
+              {showNewPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </label>
         <button type="submit" disabled={isResetSubmitting}>
           {isResetSubmitting ? 'Updating...' : 'Reset Password'}

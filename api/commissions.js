@@ -1,4 +1,5 @@
 import { requireAdminAuth } from './_lib/adminSession.js'
+import { logAdminActivity } from './_lib/adminActivity.js'
 import { getBackendConfig } from './_lib/env.js'
 import { getMultipartFiles, parseMultipartForm } from './_lib/multipart.js'
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
@@ -118,7 +119,8 @@ async function handleCreateCommission(req, res) {
 }
 
 async function handleFetchCommissions(req, res) {
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -130,7 +132,8 @@ async function handleFetchCommissions(req, res) {
 }
 
 async function handleUpdateCommissionStatus(req, res) {
-  if (!requireAdminAuth(req, res)) {
+  const session = await requireAdminAuth(req, res)
+  if (!session) {
     return null
   }
 
@@ -156,6 +159,16 @@ async function handleUpdateCommissionStatus(req, res) {
   }
 
   const updatedCommission = await updateCommissionById(commissionId, payload)
+
+  await logAdminActivity(session, {
+    action_type: 'commission_status_changed',
+    resource_type: 'commission',
+    resource_id: commissionId,
+    details: {
+      previous_status: existingCommission.status || null,
+      next_status: payload.status,
+    },
+  })
 
   return sendJson(res, 200, {
     success: true,

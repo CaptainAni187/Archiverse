@@ -60,11 +60,14 @@ Serverless routes live in `/api`:
 
 ## Local development (admin + api routes)
 
-Admin login uses `/api/admin/*` serverless routes. Those routes do **not** run under plain `vite`.
+Admin login uses `/api/admin/*` serverless routes. Those routes do **not** run under plain `vite` alone.
 
-Run locally with Vercel so `/api` works:
+Run both servers locally so the Vite `/api` proxy can reach the API handlers:
 
+- `npm run dev`
 - `npm run dev:vercel`
+
+`npm run dev:vercel` starts the local API dev server on port `3001`, which mirrors the deployed `/api/*` handlers for development.
 
 ## Admin Credentials
 

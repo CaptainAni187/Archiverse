@@ -1,13 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/api/admin/login", "destination": "/api/admin?action=login" },
-    { "source": "/api/admin/logout", "destination": "/api/admin?action=logout" },
-    { "source": "/api/admin/me", "destination": "/api/admin?action=me" },
-    { "source": "/api/admin/session", "destination": "/api/admin?action=session" },
-    { "source": "/api/admin/dashboard", "destination": "/api/admin?action=dashboard" },
-    { "source": "/api/admin/forgot-password", "destination": "/api/admin?action=forgot-password" },
-    { "source": "/api/admin/reset-password", "destination": "/api/admin?action=reset-password" },
+    { "source": "/api/admin/(.*)", "destination": "/api/admin" },
     { "source": "/api/artworks/:id/status", "destination": "/api/artworks?id=:id&action=status" },
     { "source": "/api/artworks/:id", "destination": "/api/artworks?id=:id" },
     { "source": "/api/orders/code/:orderCode", "destination": "/api/orders?action=code&orderCode=:orderCode" },

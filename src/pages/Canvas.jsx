@@ -39,7 +39,10 @@ function Canvas() {
   const canvasImages = useMemo(
     () =>
       artworks.map((artwork) => ({
-        src: Array.isArray(artwork.images) ? artwork.images[0] || '' : '',
+        src:
+          (Array.isArray(artwork.images) ? artwork.images[0] || '' : '') ||
+          artwork.image ||
+          '',
         title: artwork.title,
         medium: artwork.medium,
         year: artwork.year,
@@ -61,7 +64,7 @@ function Canvas() {
       ) : null}
 
       {!loading && !errorMessage && artworks.length > 0 ? (
-        <ArtworkCarousel images={canvasImages} interval={5000} overlayPosition="left" />
+        <ArtworkCarousel images={canvasImages} interval={3000} overlayPosition="left" />
       ) : null}
     </section>
   )

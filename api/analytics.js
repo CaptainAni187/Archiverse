@@ -21,6 +21,9 @@ export default async function handler(req, res) {
 
     return sendJson(res, 202, {
       success: true,
+      data: {
+        accepted: true,
+      },
     })
   } catch (error) {
     if (error.validationIssues) {
@@ -29,6 +32,7 @@ export default async function handler(req, res) {
 
     return sendJson(res, error.status || 500, {
       success: false,
+      error: error.error || 'ANALYTICS_REQUEST_FAILED',
       message: error.message || 'Unable to log analytics event.',
     })
   }

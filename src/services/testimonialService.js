@@ -18,6 +18,11 @@ export async function fetchTestimonials() {
   return (payload.data || []).map(normalizeTestimonial)
 }
 
+export async function fetchAdminTestimonials() {
+  const payload = await backendAdminRequest('/api/testimonials')
+  return (payload.data || []).map(normalizeTestimonial)
+}
+
 export async function addTestimonial(testimonialInput) {
   const payload = await backendAdminRequest('/api/testimonials', {
     method: 'POST',
@@ -25,4 +30,21 @@ export async function addTestimonial(testimonialInput) {
   })
 
   return normalizeTestimonial(payload.data)
+}
+
+export async function updateTestimonial(id, testimonialInput) {
+  const payload = await backendAdminRequest(`/api/testimonials?id=${Number(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(testimonialInput),
+  })
+
+  return normalizeTestimonial(payload.data)
+}
+
+export async function deleteTestimonial(id) {
+  const payload = await backendAdminRequest(`/api/testimonials?id=${Number(id)}`, {
+    method: 'DELETE',
+  })
+
+  return payload.data
 }

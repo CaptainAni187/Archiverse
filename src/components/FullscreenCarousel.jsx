@@ -13,7 +13,9 @@ function FullscreenCarousel({
         .filter(Boolean)
         .map((artwork) => ({
           id: artwork.id || artwork.title,
-          image: Array.isArray(artwork.images) ? artwork.images[0] : '',
+          image:
+            (Array.isArray(artwork.images) ? artwork.images[0] : '') ||
+            (typeof artwork.image === 'string' ? artwork.image : ''),
           title: artwork.title || 'UNTITLED',
           medium: artwork.medium || 'ACRYLIC',
         }))

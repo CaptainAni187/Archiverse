@@ -7,23 +7,31 @@ import {
   updateArtwork,
   updateArtworkStatus,
 } from '../services/artworkService'
-import {
-  fetchOrders,
-  updateOrderPaymentStatus,
-} from '../services/orderService'
-import {
-  fetchCommissions,
-  updateCommissionStatus,
-} from '../services/commissionService'
-import {
-  emptyDashboard,
-  fetchDashboardAnalytics,
-} from '../services/adminDashboardService'
+import { fetchOrders, updateOrderPaymentStatus } from '../services/orderService'
+import { fetchCommissions, updateCommissionStatus } from '../services/commissionService'
+import { emptyDashboard, fetchDashboardAnalytics } from '../services/adminDashboardService'
 import { backendAdminRequest } from '../services/backendApiService'
 import { ORDER_STATUSES } from '../constants/orderStatus'
-import { logoutAdmin } from '../services/adminAuthService'
-import { addTestimonial } from '../services/testimonialService'
+import {
+  fetchAdminSession,
+  logoutAdmin,
+  requestAdminPasswordReset,
+  resetAdminPassword,
+} from '../services/adminAuthService'
+import {
+  addTestimonial,
+  fetchAdminTestimonials,
+  updateTestimonial,
+} from '../services/testimonialService'
 import usePageMeta from '../hooks/usePageMeta'
+import AdminSidebar from '../components/AdminSidebar'
+import AdminDashboardTab from '../components/AdminDashboardTab'
+import AdminArtworksTab from '../components/AdminArtworksTab'
+import AdminOrdersTab from '../components/AdminOrdersTab'
+import AdminTestimonialsTab from '../components/AdminTestimonialsTab'
+import AdminInquiriesTab from '../components/AdminInquiriesTab'
+import AdminCommissionsTab from '../components/AdminCommissionsTab'
+import AdminSettingsTab from '../components/AdminSettingsTab'
 
 const initialForm = {
   image1: '',
@@ -50,8 +58,34 @@ const initialTestimonialForm = {
   is_featured: false,
 }
 
-function formatPrice(price) {
-  return `Rs. ${Number(price).toLocaleString()}`
+const initialPasswordForm = {
+  resetEmail: '',
+  resetToken: '',
+  newPassword: '',
+}
+
+const inquiryReadStorageKey = 'archiverse_admin_inquiry_read_state'
+const adminTabs = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'artworks', label: 'Artworks' },
+  { id: 'orders', label: 'Orders' },
+  { id: 'testimonials', label: 'Testimonials' },
+  { id: 'inquiries', label: 'Inquiries' },
+  { id: 'commissions', label: 'Commissions' },
+  { id: 'settings', label: 'Settings' },
+]
+
+function readInquiryState() {
+  try {
+    const raw = localStorage.getItem(inquiryReadStorageKey)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeInquiryState(nextState) {
+  localStorage.setItem(inquiryReadStorageKey, JSON.stringify(nextState))
 }
 
 function Admin() {
@@ -61,19 +95,25 @@ function Admin() {
   })
 
   const navigate = useNavigate()
+  const [activeTab, setActiveTab] = useState('dashboard')
   const [form, setForm] = useState(initialForm)
   const [editingId, setEditingId] = useState(null)
   const [artworks, setArtworks] = useState([])
   const [orders, setOrders] = useState([])
   const [commissions, setCommissions] = useState([])
   const [inquiries, setInquiries] = useState([])
+  const [testimonials, setTestimonials] = useState([])
   const [dashboardStats, setDashboardStats] = useState(emptyDashboard)
+  const [adminSession, setAdminSession] = useState(null)
+  const [activityLogs, setActivityLogs] = useState([])
   const [selectedOrderId, setSelectedOrderId] = useState(null)
   const [artworkFilter, setArtworkFilter] = useState('all')
   const [message, setMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [testimonialForm, setTestimonialForm] = useState(initialTestimonialForm)
+  const [passwordForm, setPasswordForm] = useState(initialPasswordForm)
+  const [inquiryReadState, setInquiryReadState] = useState({})
 
   const loadArtworks = async () => {
     const response = await fetchArtworks()
@@ -100,6 +140,25 @@ function Admin() {
     setDashboardStats(response)
   }
 
+  const loadTestimonials = async () => {
+    const response = await fetchAdminTestimonials()
+    setTestimonials(response)
+  }
+
+  const loadAdminSession = async () => {
+    const response = await fetchAdminSession()
+    setAdminSession(response.data || null)
+    setPasswordForm((previous) => ({
+      ...previous,
+      resetEmail: response.data?.admin?.email || previous.resetEmail,
+    }))
+  }
+
+  const loadActivityLogs = async () => {
+    const response = await backendAdminRequest('/api/admin/activity')
+    setActivityLogs(Array.isArray(response.data) ? response.data : [])
+  }
+
   useEffect(() => {
     let isCancelled = false
 
@@ -112,20 +171,44 @@ function Admin() {
           commissionResponse,
           inquiryResponse,
           dashboardResponse,
+          testimonialResponse,
+          sessionResponse,
+          activityResponse,
         ] = await Promise.all([
           fetchArtworks(),
           fetchOrders(),
           fetchCommissions(),
           backendAdminRequest('/api/inquiries'),
           fetchDashboardAnalytics(),
+          fetchAdminTestimonials(),
+          fetchAdminSession(),
+          backendAdminRequest('/api/admin/activity'),
         ])
+
         if (!isCancelled) {
+          const inquiryRows = Array.isArray(inquiryResponse.data) ? inquiryResponse.data : []
+          const persistedInquiryState = inquiryRows.reduce((accumulator, inquiry) => {
+            accumulator[inquiry.id] = inquiry.is_read === true
+            return accumulator
+          }, {})
+
           setArtworks(artworkResponse)
           setOrders(orderResponse)
           setCommissions(commissionResponse)
-          setInquiries(Array.isArray(inquiryResponse.data) ? inquiryResponse.data : [])
+          setInquiries(inquiryRows)
           setDashboardStats(dashboardResponse)
+          setTestimonials(testimonialResponse)
+          setAdminSession(sessionResponse.data || null)
+          setActivityLogs(Array.isArray(activityResponse.data) ? activityResponse.data : [])
+          setPasswordForm((previous) => ({
+            ...previous,
+            resetEmail: sessionResponse.data?.admin?.email || previous.resetEmail,
+          }))
           setSelectedOrderId((previous) => previous || orderResponse[0]?.id || null)
+          setInquiryReadState({
+            ...readInquiryState(),
+            ...persistedInquiryState,
+          })
           setErrorMessage('')
         }
       } catch (error) {
@@ -211,7 +294,7 @@ function Admin() {
 
       setForm(initialForm)
       setEditingId(null)
-      await loadArtworks()
+      await Promise.all([loadArtworks(), loadActivityLogs()])
     } catch (error) {
       setErrorMessage(`Failed to save artwork: ${error.message}`)
     }
@@ -237,6 +320,7 @@ function Admin() {
       category: artwork.category || 'canvas',
     })
     setEditingId(artwork.id)
+    setActiveTab('artworks')
     setMessage('')
     setErrorMessage('')
   }
@@ -250,7 +334,7 @@ function Admin() {
     setErrorMessage('')
     try {
       await deleteArtwork(id)
-      await loadArtworks()
+      await Promise.all([loadArtworks(), loadActivityLogs()])
       setMessage('Artwork deleted successfully.')
     } catch (error) {
       setErrorMessage(`Failed to delete artwork: ${error.message}`)
@@ -279,6 +363,7 @@ function Admin() {
         is_featured: testimonialForm.is_featured,
       })
       setTestimonialForm(initialTestimonialForm)
+      await Promise.all([loadTestimonials(), loadActivityLogs()])
       setMessage('Testimonial added successfully.')
     } catch (error) {
       setErrorMessage(`Failed to add testimonial: ${error.message}`)
@@ -290,10 +375,26 @@ function Admin() {
     setErrorMessage('')
     try {
       await updateArtworkStatus(id, status)
-      await loadArtworks()
+      await Promise.all([loadArtworks(), loadActivityLogs()])
       setMessage('Artwork status updated.')
     } catch (error) {
       setErrorMessage(`Failed to update status: ${error.message}`)
+    }
+  }
+
+  const onToggleArtworkFeatured = async (artwork) => {
+    setMessage('')
+    setErrorMessage('')
+    try {
+      await updateArtwork(artwork.id, {
+        ...artwork,
+        images: Array.isArray(artwork.images) ? artwork.images : artwork.image ? [artwork.image] : [],
+        is_featured: artwork.is_featured !== true,
+      })
+      await Promise.all([loadArtworks(), loadDashboardStats(), loadActivityLogs()])
+      setMessage('Artwork featured state updated.')
+    } catch (error) {
+      setErrorMessage(`Failed to update featured state: ${error.message}`)
     }
   }
 
@@ -302,7 +403,7 @@ function Admin() {
     setErrorMessage('')
     try {
       await updateOrderPaymentStatus(orderId, paymentStatus)
-      await Promise.all([loadOrders(), loadDashboardStats()])
+      await Promise.all([loadOrders(), loadDashboardStats(), loadActivityLogs()])
       setMessage('Order status updated.')
     } catch (error) {
       setErrorMessage(`Failed to update order: ${error.message}`)
@@ -314,33 +415,137 @@ function Admin() {
     setErrorMessage('')
     try {
       await updateCommissionStatus(commissionId, status)
-      await Promise.all([loadCommissions(), loadInquiries()])
+      await Promise.all([loadCommissions(), loadActivityLogs()])
       setMessage('Commission status updated.')
     } catch (error) {
       setErrorMessage(`Failed to update commission: ${error.message}`)
     }
   }
 
+  const onToggleTestimonialFeatured = async (testimonial) => {
+    setMessage('')
+    setErrorMessage('')
+    try {
+      await updateTestimonial(testimonial.id, {
+        is_featured: testimonial.is_featured !== true,
+      })
+      await Promise.all([loadTestimonials(), loadActivityLogs()])
+      setMessage('Testimonial featured state updated.')
+    } catch (error) {
+      setErrorMessage(`Failed to update testimonial: ${error.message}`)
+    }
+  }
+
+  const onToggleTestimonialVisibility = async (testimonial) => {
+    setMessage('')
+    setErrorMessage('')
+    try {
+      await updateTestimonial(testimonial.id, {
+        is_visible: testimonial.is_visible !== true,
+      })
+      await Promise.all([loadTestimonials(), loadActivityLogs()])
+      setMessage('Testimonial visibility updated.')
+    } catch (error) {
+      setErrorMessage(`Failed to update testimonial visibility: ${error.message}`)
+    }
+  }
+
+  const onChangePasswordField = (event) => {
+    const { name, value } = event.target
+    setPasswordForm((previous) => ({ ...previous, [name]: value }))
+  }
+
+  const onRequestResetToken = async (event) => {
+    event.preventDefault()
+    setMessage('')
+    setErrorMessage('')
+
+    try {
+      const response = await requestAdminPasswordReset(passwordForm.resetEmail.trim())
+      setPasswordForm((previous) => ({
+        ...previous,
+        resetToken: response.data?.resetToken || previous.resetToken,
+      }))
+      setMessage(response.data?.message || 'Reset token generated.')
+    } catch (error) {
+      setErrorMessage(`Failed to request reset token: ${error.message}`)
+    }
+  }
+
+  const onSubmitPasswordReset = async (event) => {
+    event.preventDefault()
+    setMessage('')
+    setErrorMessage('')
+
+    try {
+      const response = await resetAdminPassword(
+        passwordForm.resetEmail.trim(),
+        passwordForm.resetToken.trim(),
+        passwordForm.newPassword,
+      )
+      setPasswordForm((previous) => ({
+        ...previous,
+        resetToken: '',
+        newPassword: '',
+      }))
+      setMessage(response.data?.message || 'Password reset successfully.')
+    } catch (error) {
+      setErrorMessage(`Failed to update password: ${error.message}`)
+    }
+  }
+
+  const onLogout = async () => {
+    await logoutAdmin()
+    navigate('/admin/login')
+  }
+
+  const onToggleInquiryRead = async (inquiryId) => {
+    const currentValue = inquiryReadState[inquiryId] === true
+    setMessage('')
+    setErrorMessage('')
+
+    try {
+      await backendAdminRequest(`/api/inquiries?id=${Number(inquiryId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          is_read: !currentValue,
+        }),
+      })
+
+      setInquiryReadState((previous) => {
+        const nextState = {
+          ...previous,
+          [inquiryId]: !currentValue,
+        }
+        writeInquiryState(nextState)
+        return nextState
+      })
+
+      await loadActivityLogs()
+      setMessage(`Inquiry marked as ${currentValue ? 'unread' : 'read'}.`)
+    } catch (error) {
+      setErrorMessage(`Failed to update inquiry: ${error.message}`)
+    }
+  }
+
   const filteredArtworks = useMemo(
-    () =>
-      artworks.filter((artwork) =>
-        artworkFilter === 'all' ? true : artwork.status === artworkFilter,
-      ),
+    () => artworks.filter((artwork) => (artworkFilter === 'all' ? true : artwork.status === artworkFilter)),
     [artworks, artworkFilter],
   )
+
   const adminArtworkPreviews = useMemo(
     () =>
       new Map(
         filteredArtworks.map((artwork) => [
           artwork.id,
-          Array.isArray(artwork.images) ? artwork.images[0] || '' : '',
+          (Array.isArray(artwork.images) ? artwork.images[0] || '' : '') || artwork.image || '',
         ]),
       ),
     [filteredArtworks],
   )
+
   const artworksById = Object.fromEntries(artworks.map((artwork) => [artwork.id, artwork]))
-  const selectedOrder =
-    orders.find((order) => order.id === selectedOrderId) || orders[0] || null
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId) || orders[0] || null
   const selectedArtwork = selectedOrder ? artworksById[selectedOrder.product_id] : null
 
   if (loading) {
@@ -352,476 +557,89 @@ function Admin() {
   }
 
   return (
-    <section>
+    <section className="admin-workspace">
       <div className="admin-header">
         <h2 className="section-title">Admin Dashboard</h2>
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={async () => {
-            await logoutAdmin()
-            navigate('/admin/login')
-          }}
-        >
-          Logout
-        </button>
       </div>
-
-      <form className="admin-form" onSubmit={onSubmit}>
-        <label>
-          Image URL 1
-          <input name="image1" value={form.image1} onChange={onChange} required />
-        </label>
-        <label>
-          Image URL 2
-          <input name="image2" value={form.image2} onChange={onChange} />
-        </label>
-        <label>
-          Image URL 3
-          <input name="image3" value={form.image3} onChange={onChange} />
-        </label>
-        <label>
-          Image URL 4
-          <input name="image4" value={form.image4} onChange={onChange} />
-        </label>
-        <label>
-          Image URL 5
-          <input name="image5" value={form.image5} onChange={onChange} />
-        </label>
-        <label>
-          Title
-          <input name="title" value={form.title} onChange={onChange} required />
-        </label>
-        <label>
-          Price
-          <input
-            name="price"
-            type="number"
-            min="1"
-            value={form.price}
-            onChange={onChange}
-            required
-          />
-        </label>
-        <label>
-          Description
-          <textarea
-            name="description"
-            value={form.description}
-            onChange={onChange}
-            required
-          />
-        </label>
-        <label>
-          Medium
-          <input name="medium" value={form.medium} onChange={onChange} required />
-        </label>
-        <label>
-          Size
-          <input name="size" value={form.size} onChange={onChange} required />
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            name="is_featured"
-            checked={form.is_featured}
-            onChange={(event) =>
-              setForm((previous) => ({ ...previous, is_featured: event.target.checked }))
-            }
-          />
-          Featured on homepage
-        </label>
-        <label>
-          Quantity
-          <input
-            name="quantity"
-            type="number"
-            min="0"
-            step="1"
-            value={form.quantity}
-            onChange={onChange}
-            required
-          />
-        </label>
-        <label>
-          Status
-          <select name="status" value={form.status} onChange={onChange}>
-            <option value="available">available</option>
-            <option value="sold">sold</option>
-          </select>
-        </label>
-        <label>
-          Category
-          <select name="category" value={form.category} onChange={onChange}>
-            <option value="canvas">canvas</option>
-            <option value="sketch">sketch</option>
-          </select>
-        </label>
-        <div className="btn-row">
-          <button type="submit">{editingId ? 'Update Artwork' : 'Add Artwork'}</button>
-          {editingId ? (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => {
-                setEditingId(null)
-                setForm(initialForm)
-              }}
-            >
-              Cancel Edit
-            </button>
-          ) : null}
-        </div>
-      </form>
-
-      <form className="admin-form" onSubmit={onSubmitTestimonial}>
-        <h3>Testimonials</h3>
-        <label>
-          Name
-          <input
-            name="name"
-            value={testimonialForm.name}
-            onChange={onChangeTestimonial}
-            required
-          />
-        </label>
-        <label>
-          Content
-          <textarea
-            name="content"
-            value={testimonialForm.content}
-            onChange={onChangeTestimonial}
-            required
-          />
-        </label>
-        <label>
-          Rating
-          <input
-            name="rating"
-            type="number"
-            min="1"
-            max="5"
-            value={testimonialForm.rating}
-            onChange={onChangeTestimonial}
-          />
-        </label>
-        <label>
-          Artwork ID
-          <input
-            name="artwork_id"
-            type="number"
-            min="1"
-            value={testimonialForm.artwork_id}
-            onChange={onChangeTestimonial}
-          />
-        </label>
-        <label>
-          <input
-            name="is_featured"
-            type="checkbox"
-            checked={testimonialForm.is_featured}
-            onChange={onChangeTestimonial}
-          />
-          Featured
-        </label>
-        <div className="btn-row">
-          <button type="submit">Add Testimonial</button>
-        </div>
-      </form>
 
       {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
       {message ? <p className="status-message success">{message}</p> : null}
 
-      <div className="stats-grid">
-        <article className="stat-card">
-          <p>Total Orders</p>
-          <strong>{dashboardStats.total_orders}</strong>
-        </article>
-        <article className="stat-card">
-          <p>Total Revenue</p>
-          <strong>{formatPrice(dashboardStats.total_revenue)}</strong>
-        </article>
-        <article className="stat-card">
-          <p>Artwork Sales Count</p>
-          <strong>{dashboardStats.artwork_sales_count}</strong>
-        </article>
-        <article className="stat-card">
-          <p>Unique Artworks Sold</p>
-          <strong>{dashboardStats.unique_artworks_sold}</strong>
-        </article>
-      </div>
+      <div className="admin-layout">
+        <AdminSidebar tabs={adminTabs} activeTab={activeTab} onChangeTab={setActiveTab} />
 
-      <section className="order-detail-card dashboard-daily-orders">
-        <h3>Orders Per Day</h3>
-        <div className="dashboard-daily-list">
-          {dashboardStats.orders_per_day.map((item) => (
-            <p key={item.date}>
-              <span>{item.date}</span>
-              <strong>{item.count}</strong>
-            </p>
-          ))}
-        </div>
-      </section>
-
-      <div className="filter-row">
-        <span>Artwork filter:</span>
-        <button
-          type="button"
-          className={artworkFilter === 'all' ? 'btn-filter active' : 'btn-filter'}
-          onClick={() => setArtworkFilter('all')}
-        >
-          All
-        </button>
-        <button
-          type="button"
-          className={artworkFilter === 'available' ? 'btn-filter active' : 'btn-filter'}
-          onClick={() => setArtworkFilter('available')}
-        >
-          Available
-        </button>
-        <button
-          type="button"
-          className={artworkFilter === 'sold' ? 'btn-filter active' : 'btn-filter'}
-          onClick={() => setArtworkFilter('sold')}
-        >
-          Sold
-        </button>
-      </div>
-
-      <div className="admin-list">
-        {filteredArtworks.length === 0 ? (
-          <p className="status-message">No artworks found.</p>
-        ) : (
-          filteredArtworks.map((artwork) => (
-          <article key={artwork.id} className="admin-item">
-            {adminArtworkPreviews.get(artwork.id) ? (
-              <img
-                src={adminArtworkPreviews.get(artwork.id)}
-                alt={artwork.title}
-                loading="lazy"
-                decoding="async"
-                width="400"
-                height="400"
-              />
-            ) : null}
-            <div>
-              <h3>{artwork.title}</h3>
-              <p>{formatPrice(artwork.price)}</p>
-              <p>Medium: {artwork.medium}</p>
-              <p>Size: {artwork.size}</p>
-              <p>Stock: {artwork.quantity}</p>
-              <p>Category: {artwork.category || 'canvas'}</p>
-              <p>
-                Status:{' '}
-                <span
-                  className={`badge ${artwork.status === 'sold' ? 'sold' : 'available'}`}
-                >
-                  {artwork.status || 'available'}
-                </span>
-              </p>
-            </div>
-            <div className="btn-col">
-              <select
-                value={artwork.status || 'available'}
-                onChange={(event) =>
-                  onChangeArtworkStatus(artwork.id, event.target.value)
-                }
-              >
-                <option value="available">available</option>
-                <option value="sold">sold</option>
-              </select>
-              <button type="button" onClick={() => onEditArtwork(artwork)}>
-                Edit
-              </button>
-              <button
-                type="button"
-                className="btn-danger"
-                onClick={() => onDeleteArtwork(artwork.id)}
-              >
-                Delete
-              </button>
-            </div>
-          </article>
-          ))
-        )}
-      </div>
-
-      <h2 className="orders-heading">Orders</h2>
-      {selectedOrder ? (
-        <section className="order-detail-card">
-          <div className="order-detail-header">
-            <div>
-              <p className="order-detail-kicker">Selected order</p>
-              <h3>{selectedOrder.order_code || `Order #${selectedOrder.id}`}</h3>
-            </div>
-            <span className={`badge status-${selectedOrder.payment_status}`}>
-              {selectedOrder.payment_status}
-            </span>
-          </div>
-          <div className="order-detail-grid">
-            <div>
-              <h4>Customer</h4>
-              <p>{selectedOrder.customer_name}</p>
-              <p>{selectedOrder.customer_email}</p>
-              <p>{selectedOrder.customer_phone}</p>
-              <p>{selectedOrder.customer_address}</p>
-            </div>
-            <div>
-              <h4>Product</h4>
-              <p>{selectedOrder.product_title}</p>
-              <p>Total: {formatPrice(selectedOrder.total_amount)}</p>
-              <p>Advance: {formatPrice(selectedOrder.advance_amount)}</p>
-              {selectedArtwork ? (
-                <>
-                  <p>Medium: {selectedArtwork.medium}</p>
-                  <p>Size: {selectedArtwork.size}</p>
-                  <p>Status: {selectedArtwork.status}</p>
-                </>
-              ) : (
-                <p>Artwork details are unavailable in the current catalog snapshot.</p>
-              )}
-            </div>
-            <div>
-              <h4>Payment</h4>
-              <p>Payment ID: {selectedOrder.razorpay_payment_id || 'Not recorded'}</p>
-              <p>Razorpay Order ID: {selectedOrder.razorpay_order_id || 'Not recorded'}</p>
-              <p>
-                Verified:{' '}
-                {selectedOrder.payment_verified_at
-                  ? new Date(selectedOrder.payment_verified_at).toLocaleString()
-                  : 'Pending'}
-              </p>
-            </div>
-          </div>
-        </section>
-      ) : null}
-      <div className="admin-list">
-        {orders.length === 0 ? (
-          <p>No orders yet.</p>
-        ) : (
-          orders.map((order) => (
-            <article
-              key={order.id}
-              className={`admin-item order-item ${
-                order.id === selectedOrder?.id ? 'selected-order' : ''
-              }`}
-              onClick={() => setSelectedOrderId(order.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  setSelectedOrderId(order.id)
-                }
+        <div className="admin-content">
+          {activeTab === 'dashboard' ? <AdminDashboardTab dashboardStats={dashboardStats} /> : null}
+          {activeTab === 'artworks' ? (
+            <AdminArtworksTab
+              form={form}
+              editingId={editingId}
+              artworkFilter={artworkFilter}
+              filteredArtworks={filteredArtworks}
+              adminArtworkPreviews={adminArtworkPreviews}
+              onChange={onChange}
+              onToggleFeaturedField={(event) =>
+                setForm((previous) => ({ ...previous, is_featured: event.target.checked }))
+              }
+              onSubmit={onSubmit}
+              onCancelEdit={() => {
+                setEditingId(null)
+                setForm(initialForm)
               }}
-            >
-              <div>
-                <h3>{order.order_code || `Order #${order.id}`}</h3>
-                <p>Artwork: {order.product_title}</p>
-                <p>Customer: {order.customer_name}</p>
-                <p>Phone: {order.customer_phone}</p>
-                <p>Email: {order.customer_email}</p>
-                <p>
-                  Total: {formatPrice(order.total_amount)} | Advance:{' '}
-                  {formatPrice(order.advance_amount)}
-                </p>
-                <p>
-                  Payment:{' '}
-                  <span className={`badge status-${order.payment_status}`}>
-                    {order.payment_status}
-                  </span>
-                </p>
-              </div>
-              <div className="btn-col">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setSelectedOrderId(order.id)}
-                >
-                  View Details
-                </button>
-                <select
-                  value={order.payment_status}
-                  onClick={(event) => event.stopPropagation()}
-                  onChange={(event) => onUpdateOrderStatus(order.id, event.target.value)}
-                >
-                  {ORDER_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </article>
-          ))
-        )}
-      </div>
-
-      <h2 className="orders-heading">Inquiries</h2>
-      <div className="admin-list">
-        {inquiries.length === 0 ? (
-          <p>No inquiries yet.</p>
-        ) : (
-          inquiries.map((inquiry) => (
-            <article key={inquiry.id} className="admin-item order-item">
-              <div>
-                <h3>{inquiry.subject}</h3>
-                <p>Name: {inquiry.name}</p>
-                <p>Email: {inquiry.email}</p>
-                <p>{inquiry.message}</p>
-              </div>
-            </article>
-          ))
-        )}
-      </div>
-
-      <h2 className="orders-heading">Commissions</h2>
-      <div className="admin-list">
-        {commissions.length === 0 ? (
-          <p>No commission requests yet.</p>
-        ) : (
-          commissions.map((commission) => (
-            <article key={commission.id} className="admin-item order-item">
-              <div>
-                <h3>Commission #{commission.id}</h3>
-                <p>Customer: {commission.name}</p>
-                <p>Email: {commission.email}</p>
-                <p>Phone: {commission.phone}</p>
-                <p>Type: {commission.artwork_type}</p>
-                <p>Size: {commission.size}</p>
-                <p>Deadline: {commission.deadline}</p>
-                <p>Status: <span className={`badge status-${commission.status}`}>{commission.status}</span></p>
-                <p>{commission.description}</p>
-                {commission.reference_images?.length > 0 ? (
-                  <div className="thumbnail-row">
-                    {commission.reference_images.map((imageUrl) => (
-                      <img
-                        key={imageUrl}
-                        src={imageUrl}
-                        alt={`Commission ${commission.id} reference`}
-                        className="thumbnail-image"
-                        loading="lazy"
-                        decoding="async"
-                        width="240"
-                        height="240"
-                      />
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <div className="btn-col">
-                <select
-                  value={commission.status}
-                  onChange={(event) => onUpdateCommissionStatus(commission.id, event.target.value)}
-                >
-                  <option value="pending">pending</option>
-                  <option value="accepted">accepted</option>
-                  <option value="rejected">rejected</option>
-                </select>
-              </div>
-            </article>
-          ))
-        )}
+              onSetArtworkFilter={setArtworkFilter}
+              onChangeArtworkStatus={onChangeArtworkStatus}
+              onEditArtwork={onEditArtwork}
+              onDeleteArtwork={onDeleteArtwork}
+              onToggleArtworkFeatured={onToggleArtworkFeatured}
+            />
+          ) : null}
+          {activeTab === 'orders' ? (
+            <AdminOrdersTab
+              orders={orders}
+              selectedOrder={selectedOrder}
+              selectedArtwork={selectedArtwork}
+              orderStatuses={ORDER_STATUSES}
+              onSelectOrder={setSelectedOrderId}
+              onUpdateOrderStatus={onUpdateOrderStatus}
+            />
+          ) : null}
+          {activeTab === 'testimonials' ? (
+            <AdminTestimonialsTab
+              testimonialForm={testimonialForm}
+              testimonials={testimonials}
+              onChangeTestimonial={onChangeTestimonial}
+              onSubmitTestimonial={onSubmitTestimonial}
+              onToggleTestimonialFeatured={onToggleTestimonialFeatured}
+              onToggleTestimonialVisibility={onToggleTestimonialVisibility}
+            />
+          ) : null}
+          {activeTab === 'inquiries' ? (
+            <AdminInquiriesTab
+              inquiries={inquiries}
+              inquiryReadState={inquiryReadState}
+              onToggleInquiryRead={onToggleInquiryRead}
+            />
+          ) : null}
+          {activeTab === 'commissions' ? (
+            <AdminCommissionsTab
+              commissions={commissions}
+              onUpdateCommissionStatus={onUpdateCommissionStatus}
+            />
+          ) : null}
+          {activeTab === 'settings' ? (
+            <AdminSettingsTab
+              adminSession={adminSession}
+              activityLogs={activityLogs}
+              resetEmail={passwordForm.resetEmail}
+              resetToken={passwordForm.resetToken}
+              newPassword={passwordForm.newPassword}
+              onChangePasswordField={onChangePasswordField}
+              onRequestResetToken={onRequestResetToken}
+              onSubmitPasswordReset={onSubmitPasswordReset}
+              onLogout={onLogout}
+            />
+          ) : null}
+        </div>
       </div>
     </section>
   )

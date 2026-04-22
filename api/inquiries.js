@@ -1,4 +1,5 @@
 import { requireAdminAuth } from './_lib/adminSession.js'
+import { logAdminActivity } from './_lib/adminActivity.js'
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
 import { getBackendConfig } from './_lib/env.js'
 import { sendResendEmail } from './_lib/notifications.js'
@@ -7,7 +8,8 @@ import { supabaseAdminRequest } from './_lib/supabaseAdmin.js'
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      if (!requireAdminAuth(req, res)) {
+      const session = await requireAdminAuth(req, res)
+      if (!session) {
         return null
       }
 
@@ -18,8 +20,48 @@ export default async function handler(req, res) {
       })
     }
 
+    if (req.method === 'PATCH') {
+      const session = await requireAdminAuth(req, res)
+      if (!session) {
+        return null
+      }
+
+      const inquiryId = Number(req.query?.id)
+      const body = await readJson(req)
+      const isRead = body.is_read === true
+
+      if (!Number.isInteger(inquiryId) || inquiryId <= 0) {
+        return sendJson(res, 400, {
+          success: false,
+          error: 'INVALID_INQUIRY_ID',
+          message: 'A valid inquiry id is required.',
+        })
+      }
+
+      const response = await supabaseAdminRequest(`inquiries?id=eq.${inquiryId}`, {
+        method: 'PATCH',
+        headers: {
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify({
+          is_read: isRead,
+        }),
+      })
+
+      await logAdminActivity(session, {
+        action_type: isRead ? 'inquiry_marked_read' : 'inquiry_marked_unread',
+        resource_type: 'inquiry',
+        resource_id: inquiryId,
+      })
+
+      return sendJson(res, 200, {
+        success: true,
+        data: response?.[0] || null,
+      })
+    }
+
     if (req.method !== 'POST') {
-      return methodNotAllowed(res, ['GET', 'POST'])
+      return methodNotAllowed(res, ['GET', 'POST', 'PATCH'])
     }
 
     const body = await readJson(req)

@@ -3,6 +3,14 @@ import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import crypto from 'node:crypto'
 import { unauthorized } from './http.js'
+import {
+  createAdminSession,
+  fetchAdminByEmail,
+  fetchAdminById,
+  fetchAdminSessionById,
+  updateAdminPasswordHash,
+  updateAdminSessionById,
+} from './supabaseAdmin.js'
 
 const SESSION_EXPIRES_IN = '1h'
 const resetTokens = new Map()
@@ -12,8 +20,27 @@ function getSessionSecret() {
   return process.env.ADMIN_SESSION_SECRET || ''
 }
 
-function getAdminEmail() {
-  return String(process.env.ADMIN_EMAIL || '').trim().toLowerCase()
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase()
+}
+
+function isMissingTableError(error, tableName) {
+  const message = String(error?.message || '').toLowerCase()
+  return message.includes('relation') && message.includes(tableName.toLowerCase())
+}
+
+function isAdminStoreUnavailable(error, tableName) {
+  const message = String(error?.message || '').toLowerCase()
+  return (
+    isMissingTableError(error, tableName) ||
+    message.includes('supabase_url') ||
+    message.includes('supabase_service_role_key') ||
+    message.includes('fetch failed')
+  )
+}
+
+function getFallbackAdminEmail() {
+  return normalizeEmail(process.env.ADMIN_EMAIL || '')
 }
 
 function getPasswordHash() {
@@ -25,25 +52,129 @@ function getPasswordHash() {
   return plainPassword ? bcrypt.hashSync(plainPassword, 10) : ''
 }
 
-export async function validateAdminCredentials(email, password) {
-  const normalizedInputEmail = String(email || '').trim().toLowerCase()
-
-  if (!normalizedInputEmail || !password || normalizedInputEmail !== getAdminEmail()) {
-    return false
-  }
-
+function getFallbackAdminRecord() {
+  const email = getFallbackAdminEmail()
   const passwordHash = getPasswordHash()
-  if (!passwordHash) {
-    return false
+
+  if (!email || !passwordHash) {
+    return null
   }
 
-  return bcrypt.compare(password, passwordHash)
+  return {
+    id: null,
+    name: 'Primary Admin',
+    email,
+    password_hash: passwordHash,
+    role: 'admin',
+    auth_source: 'env',
+  }
 }
 
-export function createAdminToken() {
-  return jwt.sign({ role: 'admin', email: getAdminEmail() }, getSessionSecret(), {
-    expiresIn: SESSION_EXPIRES_IN,
+function sanitizeAdmin(admin, authSource = 'table') {
+  return {
+    id: admin.id == null ? null : Number(admin.id),
+    name: String(admin.name || admin.email || 'Admin').trim(),
+    email: normalizeEmail(admin.email),
+    role: String(admin.role || 'admin').trim().toLowerCase() || 'admin',
+    auth_source: authSource,
+  }
+}
+
+export async function validateAdminCredentials(email, password) {
+  const normalizedInputEmail = normalizeEmail(email)
+
+  if (!normalizedInputEmail || !password) {
+    return null
+  }
+
+  try {
+    const dbAdmin = await fetchAdminByEmail(normalizedInputEmail)
+
+    if (dbAdmin && dbAdmin.is_active !== false) {
+      const matches = await bcrypt.compare(password, String(dbAdmin.password_hash || ''))
+      if (matches) {
+        return sanitizeAdmin(dbAdmin, 'table')
+      }
+
+      return null
+    }
+  } catch (error) {
+    if (!isAdminStoreUnavailable(error, 'admins')) {
+      throw error
+    }
+  }
+
+  const fallbackAdmin = getFallbackAdminRecord()
+  if (!fallbackAdmin || normalizedInputEmail !== fallbackAdmin.email) {
+    return null
+  }
+
+  const matches = await bcrypt.compare(password, fallbackAdmin.password_hash)
+  return matches ? sanitizeAdmin(fallbackAdmin, 'env') : null
+}
+
+export async function findAdminByEmail(email) {
+  const normalizedEmail = normalizeEmail(email)
+
+  try {
+    const dbAdmin = await fetchAdminByEmail(normalizedEmail)
+    if (dbAdmin && dbAdmin.is_active !== false) {
+      return sanitizeAdmin(dbAdmin, 'table')
+    }
+  } catch (error) {
+    if (!isAdminStoreUnavailable(error, 'admins')) {
+      throw error
+    }
+  }
+
+  const fallbackAdmin = getFallbackAdminRecord()
+  return fallbackAdmin?.email === normalizedEmail ? sanitizeAdmin(fallbackAdmin, 'env') : null
+}
+
+export async function createAdminSessionRecord(admin, req) {
+  const sessionTokenId = crypto.randomUUID()
+
+  if (admin.auth_source !== 'table' || admin.id == null) {
+    return {
+      id: null,
+      session_token_id: sessionTokenId,
+      created_at: new Date().toISOString(),
+      auth_source: 'env',
+    }
+  }
+
+  const session = await createAdminSession({
+    admin_id: admin.id,
+    session_token_id: sessionTokenId,
+    email: admin.email,
+    name: admin.name,
+    ip_address: req?.headers?.['x-forwarded-for'] || req?.socket?.remoteAddress || '',
+    user_agent: String(req?.headers?.['user-agent'] || ''),
   })
+
+  return {
+    ...session,
+    auth_source: 'table',
+  }
+}
+
+export function createAdminToken(admin, session) {
+  return jwt.sign(
+    {
+      role: admin.role || 'admin',
+      admin_id: admin.id,
+      admin_name: admin.name,
+      email: admin.email,
+      auth_source: admin.auth_source || session?.auth_source || 'env',
+      session_id: session?.id ?? null,
+      session_token_id: session?.session_token_id ?? null,
+      login_at: session?.created_at ?? new Date().toISOString(),
+    },
+    getSessionSecret(),
+    {
+      expiresIn: SESSION_EXPIRES_IN,
+    },
+  )
 }
 
 export function getAdminSessionFromToken(token) {
@@ -65,7 +196,7 @@ export function getBearerToken(req) {
     : ''
 }
 
-export function requireAdminAuth(req, res) {
+export async function requireAdminAuth(req, res) {
   const token = getBearerToken(req)
 
   if (!token) {
@@ -75,18 +206,78 @@ export function requireAdminAuth(req, res) {
 
   const session = getAdminSessionFromToken(token)
 
-  if (!session || session.role !== 'admin' || session.email !== getAdminEmail()) {
+  if (!session || session.role !== 'admin' || !session.email) {
     unauthorized(res, 'Invalid or expired admin token.')
     return null
   }
 
-  return session
+  if (session.auth_source === 'table' && session.admin_id != null && session.session_id != null) {
+    try {
+      const [dbAdmin, dbSession] = await Promise.all([
+        fetchAdminById(session.admin_id),
+        fetchAdminSessionById(session.session_id),
+      ])
+
+      if (
+        !dbAdmin ||
+        dbAdmin.is_active === false ||
+        !dbSession ||
+        dbSession.logged_out_at ||
+        dbSession.session_token_id !== session.session_token_id
+      ) {
+        unauthorized(res, 'Invalid or expired admin token.')
+        return null
+      }
+
+      await updateAdminSessionById(session.session_id, {
+        last_seen_at: new Date().toISOString(),
+      }).catch(() => null)
+
+      return {
+        admin_id: Number(dbAdmin.id),
+        name: String(dbAdmin.name || dbAdmin.email || 'Admin').trim(),
+        email: normalizeEmail(dbAdmin.email),
+        role: String(dbAdmin.role || 'admin').trim().toLowerCase() || 'admin',
+        auth_source: 'table',
+        session_id: Number(dbSession.id),
+        session_token_id: dbSession.session_token_id,
+        login_at: dbSession.created_at || session.login_at || null,
+        exp: session.exp,
+      }
+    } catch (error) {
+      if (
+        !isAdminStoreUnavailable(error, 'admins') &&
+        !isAdminStoreUnavailable(error, 'admin_sessions')
+      ) {
+        throw error
+      }
+    }
+  }
+
+  const fallbackAdmin = getFallbackAdminRecord()
+
+  if (!fallbackAdmin || session.email !== fallbackAdmin.email) {
+    unauthorized(res, 'Invalid or expired admin token.')
+    return null
+  }
+
+  return {
+    admin_id: null,
+    name: fallbackAdmin.name,
+    email: fallbackAdmin.email,
+    role: 'admin',
+    auth_source: 'env',
+    session_id: null,
+    session_token_id: session.session_token_id || null,
+    login_at: session.login_at || null,
+    exp: session.exp,
+  }
 }
 
-export function createPasswordResetToken(email) {
+export function createPasswordResetToken(admin) {
   const token = crypto.randomBytes(20).toString('hex')
   resetTokens.set(token, {
-    email,
+    admin,
     expiresAt: Date.now() + 1000 * 60 * 30,
   })
   return token
@@ -95,19 +286,39 @@ export function createPasswordResetToken(email) {
 export function consumePasswordResetToken(token, email) {
   const entry = resetTokens.get(token)
   if (!entry) {
-    return false
+    return null
   }
-  if (entry.expiresAt < Date.now() || entry.email !== email) {
+
+  const normalizedEmail = normalizeEmail(email)
+  if (entry.expiresAt < Date.now() || normalizeEmail(entry.admin?.email) !== normalizedEmail) {
     resetTokens.delete(token)
-    return false
+    return null
   }
 
   resetTokens.delete(token)
-  return true
+  return entry.admin
 }
 
-export function updateAdminPassword(newPassword) {
-  runtimePasswordHash = bcrypt.hashSync(newPassword, 10)
+export async function updateAdminPassword(admin, newPassword) {
+  const passwordHash = bcrypt.hashSync(newPassword, 10)
+
+  if (admin?.auth_source === 'table' && admin.id != null) {
+    await updateAdminPasswordHash(admin.id, passwordHash)
+    return
+  }
+
+  runtimePasswordHash = passwordHash
 }
 
-export { getAdminEmail }
+export async function logoutAdminSession(session) {
+  if (session?.auth_source === 'table' && session.session_id != null) {
+    await updateAdminSessionById(session.session_id, {
+      logged_out_at: new Date().toISOString(),
+      last_seen_at: new Date().toISOString(),
+    })
+  }
+}
+
+export function getAdminEmail() {
+  return getFallbackAdminEmail()
+}

@@ -1,5 +1,4 @@
-import { backendAdminRequest } from './backendApiService'
-import { supabaseRequest } from './supabaseClient'
+import { backendAdminRequest, backendRequest } from './backendApiService'
 
 let artworksCache = null
 const artworkByIdCache = new Map()
@@ -10,14 +9,18 @@ function withoutCategory(payload) {
 }
 
 function normalizeArtwork(artwork) {
-  const images = Array.isArray(artwork.images)
-    ? artwork.images.filter((image) => typeof image === 'string' && image.trim())
-    : []
+  const images = [
+    ...(Array.isArray(artwork.images) ? artwork.images : []),
+    typeof artwork.image === 'string' ? artwork.image : '',
+  ].filter((image, index, collection) => {
+    return typeof image === 'string' && image.trim() && collection.indexOf(image) === index
+  })
 
   return {
     ...artwork,
     price: Number(artwork.price),
     images,
+    image: images[0] || '',
     is_featured: artwork.is_featured === true,
     medium: artwork.medium || 'Not specified',
     size: artwork.size || 'Not specified',
@@ -81,8 +84,8 @@ export async function fetchArtworks() {
     return artworksCache
   }
 
-  const data = await supabaseRequest('artworks?select=*&order=id.asc')
-  const normalized = data.map(normalizeArtwork)
+  const payload = await backendRequest('/api/artworks')
+  const normalized = (payload.data || []).map(normalizeArtwork)
   artworksCache = normalized
 
   normalized.forEach((artwork) => {
@@ -99,8 +102,8 @@ export async function fetchSingleArtwork(id) {
     return artworkByIdCache.get(normalizedId)
   }
 
-  const data = await supabaseRequest(`artworks?select=*&id=eq.${Number(id)}&limit=1`)
-  const normalized = data[0] ? normalizeArtwork(data[0]) : null
+  const payload = await backendRequest(`/api/artworks/${normalizedId}`)
+  const normalized = payload.data ? normalizeArtwork(payload.data) : null
 
   if (normalized) {
     artworkByIdCache.set(normalizedId, normalized)
