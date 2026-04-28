@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "generated_at": null,
+  "generator": "ml/build_image_intelligence.py",
+  "framework": "pytorch",
+  "artworks": [],
+  "similar_by_artwork_id": {},
+  "duplicate_candidates_by_artwork_id": {},
+  "failures": []
+}

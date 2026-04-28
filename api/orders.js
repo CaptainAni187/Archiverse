@@ -12,6 +12,7 @@ import { fetchRazorpayPayment, verifyRazorpaySignature } from './_lib/razorpay.j
 import {
   decrementArtworkStock,
   fetchArtworkById,
+  fetchComboById,
   fetchLatestOrderCodes,
   fetchOrderByCode,
   fetchOrderById,
@@ -27,7 +28,13 @@ import {
   sendValidationError,
   validateWithSchema,
 } from './_lib/validation.js'
-import { getDeliveryDetails } from '../src/utils/delivery.js'
+import {
+  buildPurchaseSelection,
+  createArtworkSetKey,
+  hydrateCombo,
+  isArtworkAvailable,
+  mergeUniqueArtworks,
+} from '../src/utils/comboPricing.js'
 
 function normalizeOrder(order) {
   return {
@@ -121,11 +128,110 @@ async function createOrderRecord(payload) {
   throw new Error('Unable to allocate a unique order code. Please retry.')
 }
 
+async function loadOrderSelection(validatedBody) {
+  const requestedProductIds = Array.isArray(validatedBody.product_ids)
+    ? validatedBody.product_ids.map((productId) => Number(productId))
+    : [Number(validatedBody.product_id)]
+  const uniqueProductIds = [
+    ...new Set(
+      requestedProductIds.filter((productId) => Number.isInteger(productId) && productId > 0),
+    ),
+  ]
+  const artworks = await Promise.all(uniqueProductIds.map((productId) => fetchArtworkById(productId)))
+
+  if (artworks.some((artwork) => !artwork)) {
+    const error = new Error('One or more selected artworks were not found.')
+    error.status = 404
+    error.error = 'ARTWORK_NOT_FOUND'
+    throw error
+  }
+
+  const availableArtworks = mergeUniqueArtworks(artworks)
+  if (availableArtworks.some((artwork) => !isArtworkAvailable(artwork))) {
+    const error = new Error('One or more selected artworks are no longer available.')
+    error.status = 409
+    error.error = 'ARTWORK_SOLD'
+    throw error
+  }
+
+  let curatedCombo = null
+  const comboId = String(validatedBody.combo_id || '').trim()
+  if (comboId) {
+    const combo = await fetchComboById(comboId)
+    if (!combo || combo.is_active === false) {
+      const error = new Error('Selected combo was not found.')
+      error.status = 404
+      error.error = 'COMBO_NOT_FOUND'
+      throw error
+    }
+
+    const hydratedCombo = hydrateCombo(combo, availableArtworks)
+    if (!hydratedCombo.isAvailable) {
+      const error = new Error('This combo is not currently available.')
+      error.status = 409
+      error.error = 'COMBO_UNAVAILABLE'
+      throw error
+    }
+
+    if (createArtworkSetKey(hydratedCombo.artwork_ids) !== createArtworkSetKey(uniqueProductIds)) {
+      const error = new Error('Selected combo items do not match the order request.')
+      error.status = 409
+      error.error = 'COMBO_MISMATCH'
+      throw error
+    }
+
+    curatedCombo = hydratedCombo
+  }
+
+  return buildPurchaseSelection(availableArtworks, {
+    comboId: curatedCombo?.id || null,
+    comboTitle: curatedCombo?.title || String(validatedBody.combo_title || '').trim(),
+    curatedDiscountPercent:
+      curatedCombo?.discount_percent || Number(validatedBody.discount_percent || 0),
+    type: availableArtworks.length > 1 ? 'smart-pair' : 'single',
+  })
+}
+
+async function updateArtworkByIdForRollback(id, payload) {
+  const response = await supabaseAdminRequest(`artworks?id=eq.${Number(id)}`, {
+    method: 'PATCH',
+    headers: {
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return response?.[0] || null
+}
+
+async function decrementArtworkSelection(selection) {
+  const updatedArtworks = []
+
+  try {
+    for (const artwork of selection.items) {
+      const updatedArtwork = await decrementArtworkStock(artwork)
+      updatedArtworks.push({
+        previous: artwork,
+        updated: updatedArtwork,
+      })
+    }
+  } catch (error) {
+    await Promise.allSettled(
+      updatedArtworks.map(({ previous }) =>
+        updateArtworkByIdForRollback(previous.id, {
+          quantity: previous.quantity,
+          status: previous.status || 'available',
+        }),
+      ),
+    )
+    throw error
+  }
+}
+
 async function handleCreateOrder(req, res) {
   const body = await readJson(req)
   const validatedBody = validateWithSchema(orderCreationSchema, body)
   validateWithSchema(paymentVerificationSchema, validatedBody)
-  const productId = validatedBody.product_id
   const customerName = validatedBody.customer_name
   const customerPhone = validatedBody.customer_phone
   const customerAddress = validatedBody.customer_address
@@ -159,22 +265,8 @@ async function handleCreateOrder(req, res) {
     })
   }
 
-  const artwork = await fetchArtworkById(productId)
-  if (!artwork) {
-    return sendJson(res, 404, {
-      success: false,
-      error: 'ARTWORK_NOT_FOUND',
-      message: 'Selected artwork was not found.',
-    })
-  }
-
-  if (artwork.status === 'sold' || Number(artwork.quantity) <= 0) {
-    return sendJson(res, 409, {
-      success: false,
-      error: 'ARTWORK_SOLD',
-      message: 'This artwork has already been sold.',
-    })
-  }
+  const selection = await loadOrderSelection(validatedBody)
+  const primaryArtwork = selection.primaryItem
 
   const config = getBackendConfig()
   if (!config.razorpayKeyId || !config.razorpayKeySecret) {
@@ -195,7 +287,7 @@ async function handleCreateOrder(req, res) {
       razorpay_payment_id: razorpayPaymentId,
       razorpay_order_id: razorpayOrderId,
       details: {
-        product_id: productId,
+        product_ids: selection.items.map((artwork) => artwork.id),
       },
     })
 
@@ -220,6 +312,7 @@ async function handleCreateOrder(req, res) {
       razorpay_order_id: razorpayOrderId,
       details: {
         payment_status: payment.status || 'unknown',
+        product_ids: selection.items.map((artwork) => artwork.id),
       },
     })
 
@@ -230,9 +323,8 @@ async function handleCreateOrder(req, res) {
     })
   }
 
-  const deliveryDetails = getDeliveryDetails(artwork)
-  const totalAmount = deliveryDetails.totalAmount
-  const advanceAmount = deliveryDetails.advanceAmount
+  const totalAmount = selection.pricing.totalAmount
+  const advanceAmount = selection.pricing.advanceAmount
   const expectedAmountInPaise = Math.round(advanceAmount * 100)
 
   if (Number(payment.amount) !== expectedAmountInPaise || payment.order_id !== razorpayOrderId) {
@@ -261,8 +353,8 @@ async function handleCreateOrder(req, res) {
     customer_phone: customerPhone,
     customer_address: customerAddress,
     customer_email: customerEmail,
-    product_id: artwork.id,
-    product_title: artwork.title,
+    product_id: primaryArtwork.id,
+    product_title: selection.title,
     total_amount: totalAmount,
     advance_amount: advanceAmount,
     payment_status: 'advance_paid',
@@ -274,7 +366,7 @@ async function handleCreateOrder(req, res) {
   })
 
   const order = normalizeOrder(createdOrder)
-  await decrementArtworkStock(artwork)
+  await decrementArtworkSelection(selection)
 
   await createPaymentLog({
     event_type: 'create_order',
@@ -283,8 +375,10 @@ async function handleCreateOrder(req, res) {
     razorpay_order_id: razorpayOrderId,
     order_id: order.id,
     details: {
-      product_id: artwork.id,
-      product_title: artwork.title,
+      product_ids: selection.items.map((artwork) => artwork.id),
+      product_title: selection.title,
+      combo_id: selection.comboId,
+      discount_percent: selection.pricing.discountPercent,
     },
   })
 

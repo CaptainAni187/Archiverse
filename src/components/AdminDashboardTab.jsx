@@ -42,6 +42,38 @@ function AdminDashboardTab({ dashboardStats }) {
           )}
         </div>
       </section>
+
+      <section className="order-detail-card dashboard-daily-orders">
+        <h3>Top Viewed AI Signals</h3>
+        <div className="dashboard-daily-list">
+          {dashboardStats.top_categories.length > 0 ? (
+            dashboardStats.top_categories.map((item) => (
+              <p key={`category-${item.label}`}>
+                <span>Category: {item.label}</span>
+                <strong>{item.count}</strong>
+              </p>
+            ))
+          ) : (
+            <p>
+              <span>No viewed category data yet.</span>
+              <strong>0</strong>
+            </p>
+          )}
+          {dashboardStats.top_tags.length > 0 ? (
+            dashboardStats.top_tags.map((item) => (
+              <p key={`tag-${item.label}`}>
+                <span>Tag: {item.label}</span>
+                <strong>{item.count}</strong>
+              </p>
+            ))
+          ) : (
+            <p>
+              <span>No viewed tag data yet.</span>
+              <strong>0</strong>
+            </p>
+          )}
+        </div>
+      </section>
     </section>
   )
 }

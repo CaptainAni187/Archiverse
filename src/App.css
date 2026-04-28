@@ -754,6 +754,80 @@
   margin: 0;
 }
 
+.smart-search-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.smart-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: end;
+}
+
+.smart-search-field {
+  display: grid;
+  gap: 10px;
+}
+
+.smart-search-field span,
+.smart-search-summary,
+.smart-result-explanation {
+  color: var(--text-soft);
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+}
+
+.smart-search-actions,
+.mood-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.mood-chip {
+  width: fit-content;
+  padding: 0 0 5px;
+  border-bottom: 1px solid rgba(198, 169, 98, 0.3);
+  color: var(--text-soft);
+  letter-spacing: 0.16em;
+  font-size: 0.76rem;
+}
+
+.mood-chip.is-active,
+.mood-chip:hover {
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.smart-search-summary,
+.smart-result-explanation {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.smart-search-summary span {
+  color: var(--accent-color);
+}
+
+.commission-brief-preview {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid rgba(198, 169, 98, 0.22);
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.commission-brief-preview p {
+  margin: 0;
+}
+
+.admin-commission-brief {
+  margin-top: 14px;
+}
+
 .portfolio-card,
 .store-card {
   display: grid;
@@ -1610,6 +1684,10 @@ body.is-carousel-route {
 
   .store-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .smart-search-form {
+    grid-template-columns: 1fr;
   }
 
   .artwork-grid,

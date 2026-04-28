@@ -6,13 +6,19 @@ import {
   fetchRazorpayPayment,
   verifyRazorpaySignature,
 } from './_lib/razorpay.js'
-import { fetchArtworkById, fetchOrderByPaymentId } from './_lib/supabaseAdmin.js'
+import { fetchArtworkById, fetchComboById, fetchOrderByPaymentId } from './_lib/supabaseAdmin.js'
 import {
   paymentVerificationSchema,
   sendValidationError,
   validateWithSchema,
 } from './_lib/validation.js'
-import { getDeliveryDetails } from '../src/utils/delivery.js'
+import {
+  buildPurchaseSelection,
+  createArtworkSetKey,
+  hydrateCombo,
+  isArtworkAvailable,
+  mergeUniqueArtworks,
+} from '../src/utils/comboPricing.js'
 
 function getAction(req) {
   return String(req.query?.action || '').trim().toLowerCase()
@@ -24,38 +30,76 @@ async function handleCreatePaymentOrder(req, res) {
   }
 
   const body = await readJson(req)
-  const productId = Number(body.product_id)
+  const requestedProductIds = Array.isArray(body.product_ids)
+    ? body.product_ids.map((productId) => Number(productId))
+    : [Number(body.product_id)]
+  const uniqueProductIds = [...new Set(requestedProductIds.filter((productId) => Number.isInteger(productId) && productId > 0))]
 
-  if (!Number.isInteger(productId) || productId <= 0) {
+  if (uniqueProductIds.length === 0 || uniqueProductIds.length > 5) {
     return sendJson(res, 400, {
       success: false,
-      error: 'INVALID_PRODUCT_ID',
-      message: 'A valid product_id is required.',
+      error: 'INVALID_PRODUCT_SELECTION',
+      message: 'A valid selection of 1 to 5 artworks is required.',
     })
   }
 
-  const artwork = await fetchArtworkById(productId)
-
-  if (!artwork) {
+  const artworks = await Promise.all(uniqueProductIds.map((productId) => fetchArtworkById(productId)))
+  if (artworks.some((artwork) => !artwork)) {
     return sendJson(res, 404, {
       success: false,
       error: 'ARTWORK_NOT_FOUND',
-      message: 'Selected artwork was not found.',
+      message: 'One or more selected artworks were not found.',
     })
   }
 
-  if (artwork.status === 'sold' || Number(artwork.quantity) <= 0) {
+  const availableArtworks = mergeUniqueArtworks(artworks)
+  if (availableArtworks.some((artwork) => !isArtworkAvailable(artwork))) {
     return sendJson(res, 409, {
       success: false,
       error: 'ARTWORK_UNAVAILABLE',
-      message: 'This artwork is no longer available.',
+      message: 'One or more selected artworks are no longer available.',
     })
   }
 
-  const deliveryDetails = getDeliveryDetails(artwork)
-  const totalAmount = deliveryDetails.totalAmount
-  const advanceAmount = deliveryDetails.advanceAmount
-  const amountInPaise = Math.round(advanceAmount * 100)
+  let curatedCombo = null
+  const comboId = String(body.combo_id || '').trim()
+  if (comboId) {
+    const combo = await fetchComboById(comboId)
+    if (!combo || combo.is_active === false) {
+      return sendJson(res, 404, {
+        success: false,
+        error: 'COMBO_NOT_FOUND',
+        message: 'Selected combo was not found.',
+      })
+    }
+
+    const hydratedCombo = hydrateCombo(combo, availableArtworks)
+    if (!hydratedCombo.isAvailable) {
+      return sendJson(res, 409, {
+        success: false,
+        error: 'COMBO_UNAVAILABLE',
+        message: 'This combo is not currently available.',
+      })
+    }
+
+    if (createArtworkSetKey(hydratedCombo.artwork_ids) !== createArtworkSetKey(uniqueProductIds)) {
+      return sendJson(res, 409, {
+        success: false,
+        error: 'COMBO_MISMATCH',
+        message: 'Selected combo items do not match the request.',
+      })
+    }
+
+    curatedCombo = hydratedCombo
+  }
+
+  const selection = buildPurchaseSelection(availableArtworks, {
+    comboId: curatedCombo?.id || null,
+    comboTitle: curatedCombo?.title || '',
+    curatedDiscountPercent: curatedCombo?.discount_percent || 0,
+    type: availableArtworks.length > 1 ? 'smart-pair' : 'single',
+  })
+  const amountInPaise = Math.round(selection.pricing.advanceAmount * 100)
   const config = getBackendConfig()
 
   requireConfigValues({
@@ -65,10 +109,11 @@ async function handleCreatePaymentOrder(req, res) {
 
   const razorpayOrder = await createRazorpayOrder({
     amountInPaise,
-    receipt: `arc-${productId}-${Date.now()}`.slice(0, 40),
+    receipt: `arc-${uniqueProductIds[0]}-${Date.now()}`.slice(0, 40),
     notes: {
-      product_id: String(productId),
-      product_title: artwork.title,
+      product_ids: uniqueProductIds.join(','),
+      product_title: selection.title,
+      combo_id: curatedCombo?.id || '',
     },
     razorpayKeyId: config.razorpayKeyId,
     razorpayKeySecret: config.razorpayKeySecret,
@@ -79,8 +124,8 @@ async function handleCreatePaymentOrder(req, res) {
     status: 'created',
     razorpay_order_id: razorpayOrder.id,
     details: {
-      product_id: artwork.id,
-      product_title: artwork.title,
+      product_ids: uniqueProductIds,
+      product_title: selection.title,
       amount: razorpayOrder.amount,
       currency: razorpayOrder.currency,
     },
@@ -94,12 +139,15 @@ async function handleCreatePaymentOrder(req, res) {
       currency: razorpayOrder.currency,
     },
     product: {
-      id: artwork.id,
-      title: artwork.title,
-      shippingCost: deliveryDetails.shippingCost,
-      deliveryEstimate: deliveryDetails.deliveryEstimate,
-      totalAmount,
-      advanceAmount,
+      id: uniqueProductIds[0],
+      title: selection.title,
+      itemIds: uniqueProductIds,
+      comboId: curatedCombo?.id || null,
+      discountPercent: selection.pricing.discountPercent,
+      discountAmount: selection.pricing.discountAmount,
+      shippingCost: selection.pricing.shippingCost,
+      totalAmount: selection.pricing.totalAmount,
+      advanceAmount: selection.pricing.advanceAmount,
     },
     data: {
       order: {
@@ -108,12 +156,15 @@ async function handleCreatePaymentOrder(req, res) {
         currency: razorpayOrder.currency,
       },
       product: {
-        id: artwork.id,
-        title: artwork.title,
-        shippingCost: deliveryDetails.shippingCost,
-        deliveryEstimate: deliveryDetails.deliveryEstimate,
-        totalAmount,
-        advanceAmount,
+        id: uniqueProductIds[0],
+        title: selection.title,
+        itemIds: uniqueProductIds,
+        comboId: curatedCombo?.id || null,
+        discountPercent: selection.pricing.discountPercent,
+        discountAmount: selection.pricing.discountAmount,
+        shippingCost: selection.pricing.shippingCost,
+        totalAmount: selection.pricing.totalAmount,
+        advanceAmount: selection.pricing.advanceAmount,
       },
     },
   })

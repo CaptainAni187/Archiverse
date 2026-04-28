@@ -23,25 +23,7 @@ function FullscreenCarousel({
     [artworks],
   )
   const [activeIndex, setActiveIndex] = useState(0)
-
-  useEffect(() => {
-    if (slides.length === 0) {
-      setActiveIndex(0)
-      return
-    }
-
-    setActiveIndex((previous) => {
-      if (previous < 0) {
-        return slides.length - 1
-      }
-
-      if (previous >= slides.length) {
-        return 0
-      }
-
-      return previous
-    })
-  }, [slides.length])
+  const safeActiveIndex = slides.length > 0 ? activeIndex % slides.length : 0
 
   useEffect(() => {
     if (!autoSlide || slides.length <= 1) {
@@ -81,14 +63,14 @@ function FullscreenCarousel({
             key={`${slide.id}-${index}`}
             src={slide.image}
             alt={slide.title}
-            loading={index === activeIndex ? 'eager' : 'lazy'}
+            loading={index === safeActiveIndex ? 'eager' : 'lazy'}
             decoding="async"
             width="2200"
             height="1600"
             className={`carousel-image carousel-image-frame ${
-              index === activeIndex ? 'is-active' : ''
+              index === safeActiveIndex ? 'is-active' : ''
             }`}
-            fetchPriority={index === activeIndex ? 'high' : undefined}
+            fetchPriority={index === safeActiveIndex ? 'high' : undefined}
           />
         ))}
 
@@ -115,13 +97,13 @@ function FullscreenCarousel({
 
         {overlayContent ? (
           <div className="carousel-overlay-content">
-            {overlayContent(slides[activeIndex], activeIndex)}
+            {overlayContent(slides[safeActiveIndex], safeActiveIndex)}
           </div>
         ) : null}
         {showMeta ? (
           <div className="carousel-meta">
-            <p className="carousel-meta-title">{slides[activeIndex]?.title}</p>
-            <p className="carousel-meta-medium">{slides[activeIndex]?.medium}</p>
+            <p className="carousel-meta-title">{slides[safeActiveIndex]?.title}</p>
+            <p className="carousel-meta-medium">{slides[safeActiveIndex]?.medium}</p>
             <p className="carousel-meta-medium">2026</p>
           </div>
         ) : null}

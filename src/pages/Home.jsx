@@ -9,6 +9,11 @@ import { getCanvasArtworks, getSketchArtworks } from '../utils/artworkCategories
 import ErrorState from '../components/ErrorState'
 import { SkeletonGrid } from '../components/SkeletonLoader'
 import { getUserFriendlyError } from '../utils/userErrors'
+import {
+  getRecommendedArtworks,
+  getTasteProfile,
+  onTastePreferencesReset,
+} from '../services/tasteService'
 
 const processSteps = [
   {
@@ -49,11 +54,17 @@ function pickStableGalleryPreview(artworks) {
   return selected
 }
 
+function getFeaturedRank(artwork) {
+  const rank = Number(artwork.featured_rank)
+  return Number.isFinite(rank) ? rank : Number.MAX_SAFE_INTEGER
+}
+
 function Home() {
   const navigate = useNavigate()
   const [heroCanvasWorks, setHeroCanvasWorks] = useState([])
   const [heroSketchWorks, setHeroSketchWorks] = useState([])
   const [canvasWorks, setCanvasWorks] = useState([])
+  const [forYouWorks, setForYouWorks] = useState([])
   const [galleryPreviewWorks, setGalleryPreviewWorks] = useState([])
   const [testimonials, setTestimonials] = useState([])
   const [loading, setLoading] = useState(true)
@@ -83,7 +94,13 @@ function Home() {
           )
         }
 
-        const featuredWorks = artworks.filter((artwork) => artwork.is_featured === true)
+        const featuredWorks = artworks
+          .filter((artwork) => artwork.is_featured === true)
+          .sort(
+            (left, right) =>
+              getFeaturedRank(left) - getFeaturedRank(right) ||
+              String(left.title || '').localeCompare(String(right.title || '')),
+          )
         const curatedHeroCanvas = getCanvasArtworks(featuredWorks).slice(0, 4)
         const curatedHeroSketch = getSketchArtworks(featuredWorks).slice(0, 2)
 
@@ -93,6 +110,7 @@ function Home() {
 
         setHeroCanvasWorks(curatedHeroCanvas)
         setHeroSketchWorks(curatedHeroSketch)
+        setForYouWorks(getRecommendedArtworks(artworks, 4, getTasteProfile()))
         setCanvasWorks(featuredWorks.slice(0, 6))
         setGalleryPreviewWorks((current) =>
           current.length > 0 ? current : pickStableGalleryPreview(artworks),
@@ -110,6 +128,8 @@ function Home() {
 
     loadFeatured()
   }, [retryKey])
+
+  useEffect(() => onTastePreferencesReset(() => setForYouWorks([])), [])
 
   const heroArtworks = useMemo(
     () => [...heroCanvasWorks, ...heroSketchWorks],
@@ -166,6 +186,17 @@ function Home() {
               </div>
             )}
           />
+
+          {forYouWorks.length > 0 ? (
+            <section className="section-block section-block-home">
+              <p className="eyebrow">FOR YOU</p>
+              <div className="portfolio-grid">
+                {forYouWorks.map((artwork) => (
+                  <PortfolioCard key={artwork.id} artwork={artwork} />
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="section-block section-block-home">
             <p className="eyebrow">PROCESS</p>

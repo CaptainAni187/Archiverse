@@ -50,6 +50,50 @@ export async function fetchArtworks() {
   return supabaseAdminRequest('artworks?select=*&order=id.asc')
 }
 
+export async function fetchCombos() {
+  return supabaseAdminRequest('combos?select=*&order=created_at.desc')
+}
+
+export async function fetchComboById(id) {
+  const response = await supabaseAdminRequest(`combos?select=*&id=eq.${encodeURIComponent(String(id))}&limit=1`)
+  return response?.[0] || null
+}
+
+export async function createCombo(payload) {
+  const response = await supabaseAdminRequest('combos', {
+    method: 'POST',
+    headers: {
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return response?.[0] || null
+}
+
+export async function updateComboById(id, payload) {
+  const response = await supabaseAdminRequest(`combos?id=eq.${encodeURIComponent(String(id))}`, {
+    method: 'PATCH',
+    headers: {
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return response?.[0] || null
+}
+
+export async function deleteComboById(id) {
+  await supabaseAdminRequest(`combos?id=eq.${encodeURIComponent(String(id))}`, {
+    method: 'DELETE',
+    headers: {
+      Prefer: 'return=minimal',
+    },
+  })
+
+  return { id: String(id) }
+}
+
 export async function createArtwork(payload) {
   const response = await supabaseAdminRequest('artworks', {
     method: 'POST',
@@ -312,5 +356,56 @@ export async function createAdminActivityLog(payload) {
 export async function fetchAdminActivityLogs(limit = 50) {
   return supabaseAdminRequest(
     `admin_activity_logs?select=*&order=created_at.desc&limit=${Number(limit)}`,
+  )
+}
+
+export async function upsertVisitorSession(payload) {
+  const response = await supabaseAdminRequest('visitor_sessions?on_conflict=session_id', {
+    method: 'POST',
+    headers: {
+      Prefer: 'resolution=merge-duplicates,return=representation',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return response?.[0] || null
+}
+
+export async function createVisitorEvent(payload) {
+  const response = await supabaseAdminRequest('visitor_events', {
+    method: 'POST',
+    headers: {
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return response?.[0] || null
+}
+
+export async function fetchVisitorTasteProfileBySessionId(sessionId) {
+  const encodedSessionId = encodeURIComponent(String(sessionId || '').trim())
+  const response = await supabaseAdminRequest(
+    `visitor_taste_profiles?select=*&session_id=eq.${encodedSessionId}&limit=1`,
+  )
+
+  return response?.[0] || null
+}
+
+export async function upsertVisitorTasteProfile(payload) {
+  const response = await supabaseAdminRequest('visitor_taste_profiles?on_conflict=session_id', {
+    method: 'POST',
+    headers: {
+      Prefer: 'resolution=merge-duplicates,return=representation',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return response?.[0] || null
+}
+
+export async function fetchVisitorEvents(limit = 500) {
+  return supabaseAdminRequest(
+    `visitor_events?select=event_type,metadata,created_at&order=created_at.desc&limit=${Number(limit)}`,
   )
 }

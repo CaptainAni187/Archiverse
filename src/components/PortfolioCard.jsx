@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { trackAnalyticsEvent } from '../services/analyticsService'
+import { getArtworkTasteMetadata } from '../services/tasteService'
 
 function PortfolioCard({ artwork }) {
   const navigate = useNavigate()
@@ -13,16 +15,20 @@ function PortfolioCard({ artwork }) {
     [artwork.id, artwork.image, artwork.images],
   )
   const primaryImage = images[0]
+  const openProduct = () => {
+    void trackAnalyticsEvent('artwork_click', getArtworkTasteMetadata(artwork))
+    navigate(`/product/${artwork.id}`)
+  }
 
   return (
     <article
       className="portfolio-card"
-      onClick={() => navigate(`/product/${artwork.id}`)}
+      onClick={openProduct}
       role="button"
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.key === 'Enter') {
-          navigate(`/product/${artwork.id}`)
+          openProduct()
         }
       }}
     >

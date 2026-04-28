@@ -1,13 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useOrderContext } from '../state/useOrderContext'
-import { fetchSingleArtwork } from '../services/artworkService'
+import { fetchArtworks, fetchSingleArtwork } from '../services/artworkService'
+import { fetchActiveCombos } from '../services/comboService'
 import { trackAnalyticsEvent } from '../services/analyticsService'
 import Reveal from '../components/Reveal'
 import ErrorState from '../components/ErrorState'
 import { SkeletonProduct } from '../components/SkeletonLoader'
+import StoreCard from '../components/StoreCard'
 import usePageMeta from '../hooks/usePageMeta'
 import { getUserFriendlyError } from '../utils/userErrors'
+import {
+  getArtworkTasteMetadata,
+  getRecommendationReason,
+  getTasteProfile,
+} from '../services/tasteService'
+import {
+  buildPurchaseSelection,
+  getSmartPairings,
+  isArtworkAvailable,
+} from '../utils/comboPricing'
 
 function formatPrice(price) {
   return `Rs. ${Number(price).toLocaleString()}`
@@ -16,7 +28,7 @@ function formatPrice(price) {
 function Product() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { setSelectedProduct } = useOrderContext()
+  const { setSelectedProduct, setSelectedPurchase } = useOrderContext()
   const [artwork, setArtwork] = useState(null)
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
@@ -25,6 +37,11 @@ function Product() {
   const [isImageHovering, setIsImageHovering] = useState(false)
   const [hoverZoomOrigin, setHoverZoomOrigin] = useState({ x: '50%', y: '50%' })
   const [retryKey, setRetryKey] = useState(0)
+  const [allArtworks, setAllArtworks] = useState([])
+  const [comboMatches, setComboMatches] = useState([])
+  const productOpenedAtRef = useRef(Date.now())
+  const hoverStartedAtRef = useRef(null)
+  const hoverDwellMsRef = useRef(0)
 
   usePageMeta({
     title: artwork ? `${artwork.title} | Archiverse` : 'Artwork | Archiverse',
@@ -39,12 +56,17 @@ function Product() {
         const response = await fetchSingleArtwork(id)
         setArtwork(response || null)
         setActiveImage(Array.isArray(response?.images) ? response.images[0] || '' : '')
+        const [artworksResponse, comboResponse] = await Promise.all([
+          fetchArtworks(),
+          fetchActiveCombos(id),
+        ])
+        setAllArtworks(artworksResponse)
+        setComboMatches(comboResponse)
         if (response) {
-          void trackAnalyticsEvent('artwork_view', {
-            artwork_id: response.id,
-            title: response.title,
-            category: response.category || null,
-          })
+          productOpenedAtRef.current = Date.now()
+          hoverDwellMsRef.current = 0
+          hoverStartedAtRef.current = null
+          void trackAnalyticsEvent('artwork_view', getArtworkTasteMetadata(response))
         }
         setErrorMessage('')
       } catch (error) {
@@ -59,15 +81,17 @@ function Product() {
     loadArtwork()
   }, [id, retryKey])
 
-  const galleryImages = Array.isArray(artwork?.images)
-    ? artwork.images
-    : artwork?.image
-      ? [artwork.image]
-      : []
+  const galleryImages = useMemo(
+    () => (Array.isArray(artwork?.images) ? artwork.images.filter(Boolean) : []),
+    [artwork?.images],
+  )
   const primaryImage = galleryImages[0] || ''
   const currentImage = activeImage || primaryImage
   const activeImageIndex = galleryImages.indexOf(currentImage)
   const safeImageIndex = activeImageIndex >= 0 ? activeImageIndex : 0
+  const recommendationReason = artwork
+    ? getRecommendationReason(artwork, getTasteProfile())
+    : ''
 
   const goToPreviousImage = () => {
     if (galleryImages.length <= 1) {
@@ -97,6 +121,41 @@ function Product() {
       y: `${Math.min(100, Math.max(0, relativeY))}%`,
     })
   }
+
+  const startHoverDwell = () => {
+    setIsImageHovering(true)
+    hoverStartedAtRef.current = Date.now()
+  }
+
+  const stopHoverDwell = () => {
+    setIsImageHovering(false)
+
+    if (hoverStartedAtRef.current) {
+      hoverDwellMsRef.current += Date.now() - hoverStartedAtRef.current
+      hoverStartedAtRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    if (!artwork) {
+      return undefined
+    }
+
+    return () => {
+      if (hoverStartedAtRef.current) {
+        hoverDwellMsRef.current += Date.now() - hoverStartedAtRef.current
+        hoverStartedAtRef.current = null
+      }
+
+      void trackAnalyticsEvent(
+        'product_open',
+        getArtworkTasteMetadata(artwork, {
+          dwell_time_ms: Date.now() - productOpenedAtRef.current,
+          hover_dwell_time_ms: hoverDwellMsRef.current,
+        }),
+      )
+    }
+  }, [artwork])
 
   useEffect(() => {
     if (!isZoomOpen) {
@@ -153,13 +212,17 @@ function Product() {
     return <p className="status-message">Artwork not found.</p>
   }
 
+  const smartPairings = getSmartPairings(artwork, allArtworks, 3)
+
   const buyNow = () => {
     if (artwork.status === 'sold' || Number(artwork.quantity) <= 0) {
       return
     }
 
+    const selection = buildPurchaseSelection([artwork])
     setSelectedProduct(artwork)
-    navigate('/checkout', { state: { product: artwork } })
+    setSelectedPurchase(selection)
+    navigate('/checkout', { state: { product: artwork, selection } })
   }
   const isSoldOut = artwork.status === 'sold' || Number(artwork.quantity) <= 0
 
@@ -172,8 +235,8 @@ function Product() {
               type="button"
               className={`product-zoom-trigger ${isImageHovering ? 'is-hovering' : ''}`}
               onClick={() => setIsZoomOpen(true)}
-              onMouseEnter={() => setIsImageHovering(true)}
-              onMouseLeave={() => setIsImageHovering(false)}
+              onMouseEnter={startHoverDwell}
+              onMouseLeave={stopHoverDwell}
               onMouseMove={handleImageMouseMove}
               aria-label={`Open full resolution view of ${artwork.title}`}
             >
@@ -258,6 +321,12 @@ function Product() {
           <p>ONLY 1 PIECE AVAILABLE</p>
           <p>SHIPS IN 7–10 DAYS</p>
           <p className="product-description">{artwork.description}</p>
+          <div className="product-meta">
+            <p>
+              <span>Why this is shown</span>
+              {recommendationReason}
+            </p>
+          </div>
           <button
             type="button"
             className="text-link-button action-button"
@@ -268,6 +337,54 @@ function Product() {
           </button>
         </div>
       </Reveal>
+      {comboMatches.filter((combo) => combo.isAvailable !== false).length > 0 ? (
+        <Reveal className="section-block-home">
+          <p className="eyebrow">COMPLETE THE SET</p>
+          <h2 className="section-title">Curated Combos</h2>
+          {comboMatches
+            .filter((combo) => combo.isAvailable !== false)
+            .map((combo) => (
+              <div key={combo.id} className="section-block-home">
+                <div className="order-detail-header">
+                  <div>
+                    <p>{combo.title}</p>
+                    <p>
+                      Save {combo.pricing?.discountPercent || combo.discount_percent}% on this set
+                    </p>
+                  </div>
+                  <span className="badge available">
+                    {combo.pricing?.discountPercent || combo.discount_percent}% OFF
+                  </span>
+                </div>
+                <div className="store-grid artwork-grid">
+                  {combo.items
+                    .filter((item) => isArtworkAvailable(item))
+                    .map((item) => (
+                      <StoreCard key={`${combo.id}-${item.id}`} artwork={item} />
+                    ))}
+                </div>
+                <button
+                  type="button"
+                  className="text-link-button action-button"
+                  onClick={() => {
+                    const selection = buildPurchaseSelection(combo.items, {
+                      comboId: combo.id,
+                      comboTitle: combo.title,
+                      curatedDiscountPercent:
+                        combo.pricing?.discountPercent || combo.discount_percent,
+                      type: 'combo',
+                    })
+                    setSelectedProduct(artwork)
+                    setSelectedPurchase(selection)
+                    navigate('/checkout', { state: { product: artwork, selection } })
+                  }}
+                >
+                  Buy as Combo
+                </button>
+              </div>
+            ))}
+        </Reveal>
+      ) : null}
       {isZoomOpen ? (
         <div
           className="image-zoom-overlay"
@@ -316,6 +433,33 @@ function Product() {
             onClick={(event) => event.stopPropagation()}
           />
         </div>
+      ) : null}
+      {smartPairings.length > 0 ? (
+        <Reveal className="section-block-home">
+          <p className="eyebrow">PAIR WITH THESE</p>
+          <h2 className="section-title">Smart Pairings</h2>
+          <div className="store-grid artwork-grid">
+            {smartPairings.map((candidate) => (
+              <div key={candidate.artwork.id}>
+                <StoreCard artwork={candidate.artwork} />
+                <button
+                  type="button"
+                  className="text-link-button action-button"
+                  onClick={() => {
+                    const selection = buildPurchaseSelection([artwork, candidate.artwork], {
+                      type: 'smart-pair',
+                    })
+                    setSelectedProduct(artwork)
+                    setSelectedPurchase(selection)
+                    navigate('/checkout', { state: { product: artwork, selection } })
+                  }}
+                >
+                  Add both & save 10%
+                </button>
+              </div>
+            ))}
+          </div>
+        </Reveal>
       ) : null}
     </section>
   )

@@ -6,6 +6,14 @@ import usePageMeta from '../hooks/usePageMeta'
 import ErrorState from '../components/ErrorState'
 import { SkeletonMasonry } from '../components/SkeletonLoader'
 import { getUserFriendlyError } from '../utils/userErrors'
+import { trackAnalyticsEvent } from '../services/analyticsService'
+import SmartSearchPanel from '../components/SmartSearchPanel'
+import { runSmartArtworkSearch } from '../services/smartSearchService'
+import {
+  getArtworkTasteMetadata,
+  getTasteProfile,
+  rankArtworksByTaste,
+} from '../services/tasteService'
 
 function getPrimaryImage(artwork) {
   const imageCandidates = [
@@ -24,6 +32,12 @@ function Feed() {
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [retryKey, setRetryKey] = useState(0)
+  const [smartQuery, setSmartQuery] = useState('')
+  const [selectedMoods, setSelectedMoods] = useState([])
+  const [smartResults, setSmartResults] = useState([])
+  const [smartSummary, setSmartSummary] = useState('')
+  const [smartSource, setSmartSource] = useState('')
+  const [isSmartSearching, setIsSmartSearching] = useState(false)
 
   usePageMeta({
     title: 'FEED | ARCHIVERSE',
@@ -49,22 +63,99 @@ function Feed() {
     loadFeed()
   }, [retryKey])
 
+  const hasSmartSearch = Boolean(smartQuery.trim() || selectedMoods.length > 0)
+
+  useEffect(() => {
+    if (!hasSmartSearch) {
+      setSmartResults([])
+      setSmartSummary('')
+      setSmartSource('')
+      return undefined
+    }
+
+    let isCancelled = false
+    const searchTimer = window.setTimeout(async () => {
+      setIsSmartSearching(true)
+      const response = await runSmartArtworkSearch({
+        query: smartQuery,
+        moods: selectedMoods,
+        artworks,
+      })
+
+      if (!isCancelled) {
+        setSmartResults(response.results)
+        setSmartSummary(response.summary)
+        setSmartSource(response.source)
+        setIsSmartSearching(false)
+        void trackAnalyticsEvent('search_query', {
+          query: smartQuery,
+          moods: selectedMoods,
+          result_count: response.results.length,
+        })
+      }
+    }, 250)
+
+    return () => {
+      isCancelled = true
+      window.clearTimeout(searchTimer)
+    }
+  }, [artworks, hasSmartSearch, selectedMoods, smartQuery])
+
+  const smartArtworkOrder = useMemo(
+    () =>
+      smartResults
+        .map((result) => ({
+          ...result.artwork,
+          smart_explanation: result.explanation,
+          smart_score: result.score,
+          smart_source: result.source,
+        }))
+        .filter(Boolean),
+    [smartResults],
+  )
+
   const artworksWithImages = useMemo(
     () =>
-      artworks
+      (hasSmartSearch ? smartArtworkOrder : rankArtworksByTaste(artworks, getTasteProfile()))
         .map((artwork) => ({
           ...artwork,
           src: getPrimaryImage(artwork),
         }))
         .filter((artwork) => artwork.src),
-    [artworks],
+    [artworks, hasSmartSearch, smartArtworkOrder],
   )
   const featuredArtwork = artworksWithImages[0] || null
   const masonryItems = artworksWithImages.slice(1)
+  const toggleMood = (mood) => {
+    setSelectedMoods((current) =>
+      current.includes(mood)
+        ? current.filter((item) => item !== mood)
+        : [...current, mood],
+    )
+  }
+  const clearSmartSearch = () => {
+    setSmartQuery('')
+    setSelectedMoods([])
+    setSmartResults([])
+    setSmartSummary('')
+    setSmartSource('')
+  }
 
   return (
     <section className="page-flow page-with-header-gap">
       <p className="eyebrow">FEED</p>
+
+      <SmartSearchPanel
+        query={smartQuery}
+        moods={selectedMoods}
+        summary={smartSummary}
+        source={smartSource}
+        isSearching={isSmartSearching}
+        onQueryChange={setSmartQuery}
+        onMoodToggle={toggleMood}
+        onSubmit={(event) => event.preventDefault()}
+        onClear={clearSmartSearch}
+      />
 
       {loading ? (
         <>
@@ -92,6 +183,9 @@ function Feed() {
               height="1200"
             />
           ) : null}
+          {featuredArtwork.smart_explanation ? (
+            <p className="smart-result-explanation">{featuredArtwork.smart_explanation}</p>
+          ) : null}
         </Reveal>
       ) : null}
 
@@ -103,12 +197,16 @@ function Feed() {
           >
             <article
               className="feed-artwork-card"
-              onClick={() => navigate(`/product/${artwork.id}`)}
+              onClick={() => {
+                void trackAnalyticsEvent('artwork_click', getArtworkTasteMetadata(artwork))
+                navigate(`/product/${artwork.id}`)
+              }}
               role="button"
               tabIndex={0}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
+                  void trackAnalyticsEvent('artwork_click', getArtworkTasteMetadata(artwork))
                   navigate(`/product/${artwork.id}`)
                 }
               }}
@@ -131,7 +229,15 @@ function Feed() {
                     target="_blank"
                     rel="noreferrer"
                     className="feed-instagram-overlay"
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void trackAnalyticsEvent(
+                        'instagram_click',
+                        getArtworkTasteMetadata(artwork, {
+                          instagram_url: artwork.instagram_url,
+                        }),
+                      )
+                    }}
                     onKeyDown={(event) => event.stopPropagation()}
                   >
                     Instagram
@@ -144,11 +250,22 @@ function Feed() {
                   target="_blank"
                   rel="noreferrer"
                   className="feed-instagram-mobile"
-                  onClick={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    void trackAnalyticsEvent(
+                      'instagram_click',
+                      getArtworkTasteMetadata(artwork, {
+                        instagram_url: artwork.instagram_url,
+                      }),
+                    )
+                  }}
                   onKeyDown={(event) => event.stopPropagation()}
                 >
                   Instagram
                 </a>
+              ) : null}
+              {artwork.smart_explanation ? (
+                <p className="smart-result-explanation">{artwork.smart_explanation}</p>
               ) : null}
             </article>
           </Reveal>

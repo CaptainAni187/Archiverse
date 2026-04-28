@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import { resetTastePreferences } from '../services/tasteService'
+
 function AdminSettingsTab({
   adminSession,
   activityLogs,
@@ -8,7 +11,19 @@ function AdminSettingsTab({
   onRequestResetToken,
   onSubmitPasswordReset,
   onLogout,
+  onResetRecommendationData,
 }) {
+  const [preferenceMessage, setPreferenceMessage] = useState('')
+
+  const onResetPreferences = async () => {
+    if (onResetRecommendationData) {
+      await onResetRecommendationData()
+    } else {
+      resetTastePreferences()
+    }
+    setPreferenceMessage('Preferences reset for this browser.')
+  }
+
   return (
     <section className="admin-tab-panel">
       <section className="order-detail-card">
@@ -20,6 +35,17 @@ function AdminSettingsTab({
           Session Expires:{' '}
           {adminSession?.expires_at ? new Date(adminSession.expires_at).toLocaleString() : 'Unavailable'}
         </p>
+      </section>
+
+      <section className="order-detail-card">
+        <h3>Visitor Preferences</h3>
+        <p>Reset local recommendation signals stored in this browser.</p>
+        <div className="btn-row">
+          <button type="button" className="btn-secondary" onClick={onResetPreferences}>
+            Reset Preferences
+          </button>
+        </div>
+        {preferenceMessage ? <p>{preferenceMessage}</p> : null}
       </section>
 
       <form className="admin-form" onSubmit={onRequestResetToken}>

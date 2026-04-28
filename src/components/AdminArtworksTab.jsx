@@ -8,6 +8,11 @@ function AdminArtworksTab({
   artworkFilter,
   filteredArtworks,
   adminArtworkPreviews,
+  recommendationDebugById,
+  duplicateCandidatesById,
+  imageIntelligenceById,
+  selectedImageSuggestions,
+  selectedDuplicateCandidates,
   onChange,
   onToggleFeaturedField,
   onSubmit,
@@ -17,6 +22,7 @@ function AdminArtworksTab({
   onEditArtwork,
   onDeleteArtwork,
   onToggleArtworkFeatured,
+  onSuggestArtworkTags,
 }) {
   return (
     <section className="admin-tab-panel">
@@ -54,6 +60,31 @@ function AdminArtworksTab({
           <textarea name="description" value={form.description} onChange={onChange} required />
         </label>
         <label>
+          Tags
+          <input
+            name="tags"
+            value={form.tags}
+            onChange={onChange}
+            placeholder="minimal, calm, spiritual"
+          />
+        </label>
+        <div className="btn-row">
+          <button type="button" className="btn-secondary" onClick={onSuggestArtworkTags}>
+            Suggest Tags
+          </button>
+        </div>
+        {selectedImageSuggestions.length > 0 ? (
+          <p>Image tag suggestions: {selectedImageSuggestions.join(', ')}</p>
+        ) : null}
+        {selectedDuplicateCandidates.length > 0 ? (
+          <p>
+            Possible duplicates:{' '}
+            {selectedDuplicateCandidates
+              .map((candidate) => `#${candidate.artwork_id} (${Math.round(candidate.score * 100)}%)`)
+              .join(', ')}
+          </p>
+        ) : null}
+        <label>
           Medium
           <input name="medium" value={form.medium} onChange={onChange} required />
         </label>
@@ -69,6 +100,18 @@ function AdminArtworksTab({
             onChange={onToggleFeaturedField}
           />
           Featured on homepage
+        </label>
+        <label>
+          Featured Rank
+          <input
+            name="featured_rank"
+            type="number"
+            min="0"
+            step="1"
+            value={form.featured_rank}
+            onChange={onChange}
+            placeholder="Lower appears first"
+          />
         </label>
         <label>
           Quantity
@@ -154,6 +197,8 @@ function AdminArtworksTab({
                 <p>Size: {artwork.size}</p>
                 <p>Stock: {artwork.quantity}</p>
                 <p>Category: {artwork.category || 'canvas'}</p>
+                <p>Tags: {Array.isArray(artwork.tags) && artwork.tags.length > 0 ? artwork.tags.join(', ') : 'none'}</p>
+                <p>Featured Rank: {artwork.featured_rank ?? 'unset'}</p>
                 <p>
                   Status:{' '}
                   <span className={`badge ${artwork.status === 'sold' ? 'sold' : 'available'}`}>
@@ -166,6 +211,19 @@ function AdminArtworksTab({
                     {artwork.is_featured ? 'yes' : 'no'}
                   </span>
                 </p>
+                <p>Why recommended: {recommendationDebugById.get(artwork.id)}</p>
+                {imageIntelligenceById.get(artwork.id)?.style_hints?.length ? (
+                  <p>Style hints: {imageIntelligenceById.get(artwork.id).style_hints.join(', ')}</p>
+                ) : null}
+                {duplicateCandidatesById.get(artwork.id)?.length ? (
+                  <p>
+                    Possible duplicates:{' '}
+                    {duplicateCandidatesById
+                      .get(artwork.id)
+                      .map((candidate) => `#${candidate.artwork_id} (${Math.round(candidate.score * 100)}%)`)
+                      .join(', ')}
+                  </p>
+                ) : null}
               </div>
               <div className="btn-col">
                 <select

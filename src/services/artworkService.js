@@ -25,6 +25,13 @@ function normalizeArtwork(artwork) {
     medium: artwork.medium || 'Not specified',
     size: artwork.size || 'Not specified',
     quantity: Number.isFinite(Number(artwork.quantity)) ? Number(artwork.quantity) : 1,
+    tags: Array.isArray(artwork.tags)
+      ? artwork.tags.filter((tag) => typeof tag === 'string' && tag.trim())
+      : [],
+    instagram_url: artwork.instagram_url || '',
+    featured_rank: Number.isFinite(Number(artwork.featured_rank))
+      ? Number(artwork.featured_rank)
+      : null,
     status:
       Number(artwork.quantity) <= 0 ? 'sold' : artwork.status || 'available',
     category: artwork.category || '',
@@ -49,6 +56,17 @@ function createArtworkPayload(artworkInput) {
     medium: artworkInput.medium || '',
     size: artworkInput.size || '',
     is_featured: artworkInput.is_featured === true,
+    tags: Array.isArray(artworkInput.tags)
+      ? artworkInput.tags
+          .map((tag) => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
+          .filter(Boolean)
+      : [],
+    instagram_url:
+      typeof artworkInput.instagram_url === 'string' ? artworkInput.instagram_url.trim() : '',
+    featured_rank:
+      artworkInput.featured_rank === '' || artworkInput.featured_rank == null
+        ? null
+        : Math.max(0, Math.trunc(Number(artworkInput.featured_rank))),
     quantity: Number.isFinite(Number(artworkInput.quantity))
       ? Math.max(0, Math.trunc(Number(artworkInput.quantity)))
       : 1,

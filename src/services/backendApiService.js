@@ -44,10 +44,22 @@ export async function backendAdminRequest(path, options = {}) {
   })
 }
 
-export async function createPaymentOrder(productId) {
+export async function createPaymentOrder(selection) {
+  const payloadBody =
+    typeof selection === 'number'
+      ? { product_id: selection }
+      : {
+          product_id: Number(selection?.primaryItem?.id || selection?.items?.[0]?.id || 0),
+          product_ids: Array.isArray(selection?.items)
+            ? selection.items.map((artwork) => Number(artwork.id))
+            : undefined,
+          combo_id: selection?.comboId || undefined,
+          combo_title: selection?.comboTitle || undefined,
+          discount_percent: selection?.pricing?.discountPercent || undefined,
+        }
   const payload = await backendRequest('/api/create-order', {
     method: 'POST',
-    body: JSON.stringify({ product_id: productId }),
+    body: JSON.stringify(payloadBody),
   })
 
   return payload.data?.order

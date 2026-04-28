@@ -15,7 +15,7 @@ import { findOrderByPaymentId } from '../services/orderService'
 import Reveal from '../components/Reveal'
 import ErrorState from '../components/ErrorState'
 import usePageMeta from '../hooks/usePageMeta'
-import { getDeliveryDetails } from '../utils/delivery'
+import { buildPurchaseSelection } from '../utils/comboPricing'
 import { getUserFriendlyError } from '../utils/userErrors'
 
 function formatPrice(price) {
@@ -55,8 +55,10 @@ function Checkout() {
   const location = useLocation()
   const {
     selectedProduct,
+    selectedPurchase,
     setOrderDetails,
     setSelectedProduct,
+    setSelectedPurchase,
     setOrderConfirmation,
   } = useOrderContext()
   const [form, setForm] = useState(initialForm)
@@ -78,19 +80,31 @@ function Checkout() {
     if (!selectedProduct && location.state?.product) {
       setSelectedProduct(location.state.product)
     }
-  }, [selectedProduct, location.state, setSelectedProduct])
+    if (!selectedPurchase && location.state?.selection) {
+      setSelectedPurchase(location.state.selection)
+    }
+  }, [
+    selectedProduct,
+    selectedPurchase,
+    location.state,
+    setSelectedProduct,
+    setSelectedPurchase,
+  ])
+
+  const checkoutSelection =
+    selectedPurchase || (selectedProduct ? buildPurchaseSelection([selectedProduct]) : null)
 
   useEffect(() => {
-    if (!selectedProduct) {
+    if (!checkoutSelection?.primaryItem) {
       return
     }
 
     void trackAnalyticsEvent('checkout_started', {
-      artwork_id: selectedProduct.id,
-      title: selectedProduct.title,
-      price: Number(selectedProduct.price),
+      artwork_id: checkoutSelection.primaryItem.id,
+      title: checkoutSelection.title,
+      price: Number(checkoutSelection.pricing.totalAmount),
     })
-  }, [selectedProduct])
+  }, [checkoutSelection])
 
   useEffect(() => {
     let isActive = true
@@ -171,11 +185,11 @@ function Checkout() {
     }
   }, [navigate, setOrderConfirmation, setOrderDetails])
 
-  const checkoutImage = Array.isArray(selectedProduct?.images)
-    ? selectedProduct.images[0] || ''
-    : selectedProduct?.image || ''
+  const checkoutImage = Array.isArray(checkoutSelection?.primaryItem?.images)
+    ? checkoutSelection.primaryItem.images[0] || ''
+    : checkoutSelection?.primaryItem?.image || ''
 
-  if (!selectedProduct) {
+  if (!checkoutSelection?.primaryItem) {
     return (
       <section className="page-flow">
         <p className="status-message">No artwork selected yet.</p>
@@ -186,13 +200,13 @@ function Checkout() {
     )
   }
 
-  const deliveryDetails = getDeliveryDetails(selectedProduct)
-  const subtotal = deliveryDetails.subtotal
-  const shippingCost = deliveryDetails.shippingCost
-  const totalAmount = deliveryDetails.totalAmount
-  const advanceAmount = deliveryDetails.advanceAmount
-  const remainingAmount = deliveryDetails.remainingAmount
-  const deliveryEstimate = deliveryDetails.deliveryEstimate
+  const subtotal = checkoutSelection.pricing.subtotal
+  const shippingCost = checkoutSelection.pricing.shippingCost
+  const totalAmount = checkoutSelection.pricing.totalAmount
+  const advanceAmount = checkoutSelection.pricing.advanceAmount
+  const remainingAmount = checkoutSelection.pricing.remainingAmount
+  const discountAmount = checkoutSelection.pricing.discountAmount
+  const discountPercent = checkoutSelection.pricing.discountPercent
 
   const onChange = (event) => {
     const { name, value } = event.target
@@ -266,6 +280,9 @@ function Checkout() {
         customer_address: pendingCheckout.customer.address,
         customer_email: pendingCheckout.customer.email,
         product_id: pendingCheckout.product.id,
+        product_ids: pendingCheckout.product.itemIds,
+        combo_id: pendingCheckout.product.comboId || undefined,
+        discount_percent: pendingCheckout.product.discountPercent || undefined,
         payment_status: 'advance_paid',
         ...pendingCheckout.payment,
       })
@@ -324,7 +341,7 @@ function Checkout() {
         throw new Error('Payment service is not ready. Please refresh and try again.')
       }
 
-      const paymentOrder = await createPaymentOrder(selectedProduct.id)
+      const paymentOrder = await createPaymentOrder(checkoutSelection)
       if (!paymentOrder?.id || !paymentOrder?.amount) {
         throw new Error('Unable to initialize payment. Please try again.')
       }
@@ -340,7 +357,7 @@ function Checkout() {
           customerName: trimmedName,
           customerEmail: trimmedEmail,
           customerPhone: normalizedPhone,
-          productTitle: selectedProduct.title,
+          productTitle: checkoutSelection.title,
           onSuccess: resolve,
           onFailure: (error) => reject(new Error(error?.description || 'Payment failed.')),
           onCancel: () => reject(new Error('Payment cancelled by user.')),
@@ -358,8 +375,11 @@ function Checkout() {
             email: trimmedEmail,
           },
           product: {
-            id: selectedProduct.id,
-            title: selectedProduct.title,
+            id: checkoutSelection.primaryItem.id,
+            title: checkoutSelection.title,
+            itemIds: checkoutSelection.items.map((artwork) => artwork.id),
+            comboId: checkoutSelection.comboId || null,
+            discountPercent: checkoutSelection.pricing.discountPercent,
           },
         }),
       )
@@ -375,7 +395,11 @@ function Checkout() {
         customer_phone: normalizedPhone,
         customer_address: trimmedAddress,
         customer_email: trimmedEmail,
-        product_id: selectedProduct.id,
+        product_id: checkoutSelection.primaryItem.id,
+        product_ids: checkoutSelection.items.map((artwork) => artwork.id),
+        combo_id: checkoutSelection.comboId || undefined,
+        combo_title: checkoutSelection.comboTitle || undefined,
+        discount_percent: checkoutSelection.pricing.discountPercent,
         payment_status: 'advance_paid',
         ...paymentResult,
       })
@@ -415,7 +439,7 @@ function Checkout() {
           {checkoutImage ? (
             <img
               src={checkoutImage}
-              alt={selectedProduct.title}
+              alt={checkoutSelection.title}
               className="checkout-artwork-image"
               loading="eager"
               decoding="async"
@@ -424,13 +448,20 @@ function Checkout() {
             />
           ) : null}
           <div className="checkout-summary">
-            <h3>{selectedProduct.title}</h3>
+            <h3>{checkoutSelection.title}</h3>
+            {checkoutSelection.items.length > 1 ? (
+              <p>Includes: {checkoutSelection.items.map((artwork) => artwork.title).join(', ')}</p>
+            ) : null}
             <p>Artwork subtotal: {formatPrice(subtotal)}</p>
+            {discountPercent > 0 ? (
+              <p>
+                Discount ({discountPercent}%): -{formatPrice(discountAmount)}
+              </p>
+            ) : null}
             <p>Shipping: {formatPrice(shippingCost)}</p>
             <p>Total: {formatPrice(totalAmount)}</p>
             <p className="checkout-advance">Advance Today: {formatPrice(advanceAmount)}</p>
             <p>Remaining on delivery: {formatPrice(remainingAmount)}</p>
-            <p>Estimated delivery: {deliveryEstimate}</p>
           </div>
         </div>
 

@@ -217,13 +217,30 @@ async function handleMe(req, res) {
 }
 
 async function handleActivity(req, res) {
-  if (req.method !== 'GET') {
-    return methodNotAllowed(res, ['GET'])
-  }
-
   const session = await requireAdminAuth(req, res)
   if (!session) {
     return null
+  }
+
+  if (req.method === 'POST') {
+    const body = await readJson(req)
+    await logAdminActivity(session, {
+      action_type: String(body.action_type || 'admin_activity'),
+      resource_type: String(body.resource_type || 'admin'),
+      resource_id: body.resource_id || null,
+      details: body.details || {},
+    })
+
+    return sendJson(res, 201, {
+      success: true,
+      data: {
+        logged: true,
+      },
+    })
+  }
+
+  if (req.method !== 'GET') {
+    return methodNotAllowed(res, ['GET', 'POST'])
   }
 
   const activity = await fetchAdminActivity(50)

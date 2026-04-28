@@ -5,6 +5,7 @@ import { getMultipartFiles, parseMultipartForm } from './_lib/multipart.js'
 import { methodNotAllowed, readJson, sendJson } from './_lib/http.js'
 import { notifyCommissionRequest } from './_lib/notifications.js'
 import { uploadPublicFile } from './_lib/supabaseStorage.js'
+import { parseCommissionBrief } from '../shared/ai/foundation.js'
 import {
   createCommission,
   fetchCommissionById,
@@ -33,6 +34,24 @@ function normalizeCommission(commission) {
       ? commission.reference_images
       : [],
     status: commission.status || 'pending',
+  }
+}
+
+function parseStructuredBriefField(value) {
+  const rawValue = Array.isArray(value) ? value[0] : value
+
+  if (!rawValue) {
+    return {}
+  }
+
+  if (typeof rawValue === 'object') {
+    return rawValue
+  }
+
+  try {
+    return JSON.parse(rawValue)
+  } catch {
+    return {}
   }
 }
 
@@ -93,14 +112,31 @@ async function handleCreateCommission(req, res) {
       description: Array.isArray(fields.description)
         ? fields.description[0]
         : fields.description,
+      idea_text: Array.isArray(fields.idea_text) ? fields.idea_text[0] : fields.idea_text,
+      structured_brief: parseStructuredBriefField(fields.structured_brief),
+      clearer_brief: Array.isArray(fields.clearer_brief)
+        ? fields.clearer_brief[0]
+        : fields.clearer_brief,
+      suggested_reply: Array.isArray(fields.suggested_reply)
+        ? fields.suggested_reply[0]
+        : fields.suggested_reply,
       reference_images: uploadedImages,
     }
   } else {
     body = await readJson(req)
   }
 
+  const validatedPayload = validateWithSchema(commissionPayloadSchema, body)
+  const structuredBrief =
+    Object.keys(validatedPayload.structured_brief || {}).length > 0
+      ? validatedPayload.structured_brief
+      : parseCommissionBrief(validatedPayload.idea_text || validatedPayload.description, validatedPayload)
   const payload = {
-    ...validateWithSchema(commissionPayloadSchema, body),
+    ...validatedPayload,
+    idea_text: validatedPayload.idea_text || validatedPayload.description,
+    structured_brief: structuredBrief,
+    clearer_brief: validatedPayload.clearer_brief || structuredBrief.clearer_brief || '',
+    suggested_reply: validatedPayload.suggested_reply || structuredBrief.suggested_reply || '',
     status: 'pending',
   }
   const commission = await createCommission(payload)
@@ -161,7 +197,7 @@ async function handleUpdateCommissionStatus(req, res) {
   const updatedCommission = await updateCommissionById(commissionId, payload)
 
   await logAdminActivity(session, {
-    action_type: 'commission_status_changed',
+    action_type: 'commission_reviewed',
     resource_type: 'commission',
     resource_id: commissionId,
     details: {

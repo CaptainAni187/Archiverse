@@ -6,6 +6,14 @@ import ErrorState from '../components/ErrorState'
 import { SkeletonGrid } from '../components/SkeletonLoader'
 import usePageMeta from '../hooks/usePageMeta'
 import { getUserFriendlyError } from '../utils/userErrors'
+import {
+  getTasteProfile,
+  hasTasteSignals,
+  rankArtworksByTaste,
+} from '../services/tasteService'
+import { trackAnalyticsEvent } from '../services/analyticsService'
+import SmartSearchPanel from '../components/SmartSearchPanel'
+import { runSmartArtworkSearch } from '../services/smartSearchService'
 
 const ALL_CATEGORIES = 'all'
 const DEFAULT_SORT = 'featured'
@@ -45,6 +53,12 @@ function Gallery() {
   const [maxPrice, setMaxPrice] = useState('')
   const [sortBy, setSortBy] = useState(DEFAULT_SORT)
   const [retryKey, setRetryKey] = useState(0)
+  const [smartQuery, setSmartQuery] = useState('')
+  const [selectedMoods, setSelectedMoods] = useState([])
+  const [smartResults, setSmartResults] = useState([])
+  const [smartSummary, setSmartSummary] = useState('')
+  const [smartSource, setSmartSource] = useState('')
+  const [isSmartSearching, setIsSmartSearching] = useState(false)
 
   usePageMeta({
     title: 'Gallery | Archiverse',
@@ -70,6 +84,29 @@ function Gallery() {
     loadArtworks()
   }, [retryKey])
 
+  useEffect(() => {
+    if (loading) {
+      return
+    }
+
+    if (
+      selectedCategory === ALL_CATEGORIES &&
+      minPrice === '' &&
+      maxPrice === '' &&
+      sortBy === DEFAULT_SORT
+    ) {
+      return
+    }
+
+    void trackAnalyticsEvent('search_query', {
+      query: [selectedCategory, minPrice, maxPrice, sortBy].filter(Boolean).join(' '),
+      category: selectedCategory === ALL_CATEGORIES ? '' : selectedCategory,
+      min_price: minPrice === '' ? null : Number(minPrice),
+      max_price: maxPrice === '' ? null : Number(maxPrice),
+      sort_by: sortBy,
+    })
+  }, [loading, maxPrice, minPrice, selectedCategory, sortBy])
+
   const categories = useMemo(() => {
     const uniqueCategories = Array.from(
       new Set(
@@ -84,6 +121,7 @@ function Gallery() {
 
   const invalidPriceRange =
     minPrice !== '' && maxPrice !== '' && Number(minPrice) > Number(maxPrice)
+  const hasSmartSearch = Boolean(smartQuery.trim() || selectedMoods.length > 0)
 
   const filteredArtworks = useMemo(() => {
     const parsedMinPrice = minPrice === '' ? null : Number(minPrice)
@@ -93,7 +131,26 @@ function Gallery() {
       return []
     }
 
-    const matchingArtworks = artworks.filter((artwork) => {
+    const smartResultById = new Map(
+      smartResults.map((result) => [
+        Number(result.artwork?.id),
+        {
+          explanation: result.explanation,
+          score: result.score,
+          source: result.source,
+        },
+      ]),
+    )
+    const sourceArtworks = hasSmartSearch
+      ? smartResults.map((result) => result.artwork).filter(Boolean)
+      : artworks
+
+    const matchingArtworks = sourceArtworks.map((artwork) => ({
+      ...artwork,
+      smart_explanation: smartResultById.get(Number(artwork.id))?.explanation || '',
+      smart_score: smartResultById.get(Number(artwork.id))?.score || 0,
+      smart_source: smartResultById.get(Number(artwork.id))?.source || '',
+    })).filter((artwork) => {
       const matchesCategory =
         selectedCategory === ALL_CATEGORIES || artwork.category === selectedCategory
       const matchesMinPrice = parsedMinPrice === null || artwork.price >= parsedMinPrice
@@ -102,8 +159,63 @@ function Gallery() {
       return matchesCategory && matchesMinPrice && matchesMaxPrice
     })
 
+    if (hasSmartSearch) {
+      return matchingArtworks
+    }
+
+    if (sortBy === DEFAULT_SORT && hasTasteSignals(getTasteProfile())) {
+      return rankArtworksByTaste(matchingArtworks, getTasteProfile())
+    }
+
     return sortArtworks(matchingArtworks, sortBy)
-  }, [artworks, maxPrice, minPrice, selectedCategory, sortBy])
+  }, [artworks, hasSmartSearch, maxPrice, minPrice, selectedCategory, smartResults, sortBy])
+
+  useEffect(() => {
+    if (!hasSmartSearch) {
+      setSmartResults([])
+      setSmartSummary('')
+      setSmartSource('')
+      return undefined
+    }
+
+    let isCancelled = false
+    const searchTimer = window.setTimeout(async () => {
+      setIsSmartSearching(true)
+      const response = await runSmartArtworkSearch({
+        query: smartQuery,
+        moods: selectedMoods,
+        artworks,
+      })
+
+      if (!isCancelled) {
+        setSmartResults(response.results)
+        setSmartSummary(response.summary)
+        setSmartSource(response.source)
+        setIsSmartSearching(false)
+      }
+    }, 250)
+
+    return () => {
+      isCancelled = true
+      window.clearTimeout(searchTimer)
+    }
+  }, [artworks, hasSmartSearch, selectedMoods, smartQuery])
+
+  const toggleMood = (mood) => {
+    setSelectedMoods((current) =>
+      current.includes(mood)
+        ? current.filter((item) => item !== mood)
+        : [...current, mood],
+    )
+  }
+
+  const clearSmartSearch = () => {
+    setSmartQuery('')
+    setSelectedMoods([])
+    setSmartResults([])
+    setSmartSummary('')
+    setSmartSource('')
+  }
 
   if (loading) {
     return (
@@ -136,6 +248,17 @@ function Gallery() {
         <p className="eyebrow">STORE</p>
         <p className="store-tagline">ORIGINAL WORKS AVAILABLE FOR COLLECTION.</p>
       </Reveal>
+      <SmartSearchPanel
+        query={smartQuery}
+        moods={selectedMoods}
+        summary={smartSummary}
+        source={smartSource}
+        isSearching={isSmartSearching}
+        onQueryChange={setSmartQuery}
+        onMoodToggle={toggleMood}
+        onSubmit={(event) => event.preventDefault()}
+        onClear={clearSmartSearch}
+      />
       <div className="store-filters" aria-label="Store filters">
         <label className="store-filter-field">
           <span>Category</span>

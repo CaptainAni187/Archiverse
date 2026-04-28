@@ -1,4 +1,31 @@
 function AdminCommissionsTab({ commissions, onUpdateCommissionStatus }) {
+  const renderStructuredBrief = (commission) => {
+    const brief = commission.structured_brief || {}
+
+    if (Object.keys(brief).length === 0) {
+      return null
+    }
+
+    return (
+      <section className="commission-brief-preview admin-commission-brief">
+        <p className="eyebrow">Structured Brief</p>
+        <p>Style: {brief.style || 'Not specified'}</p>
+        <p>Mood: {brief.mood || 'Not specified'}</p>
+        <p>Medium: {brief.medium_suggestion || 'Not specified'}</p>
+        <p>Size: {brief.size_suggestion || commission.size}</p>
+        <p>Urgency: {brief.deadline_urgency || 'Not specified'}</p>
+        <p>
+          Themes:{' '}
+          {Array.isArray(brief.theme_keywords) && brief.theme_keywords.length > 0
+            ? brief.theme_keywords.join(', ')
+            : 'Not specified'}
+        </p>
+        {commission.clearer_brief ? <p>Brief: {commission.clearer_brief}</p> : null}
+        {commission.suggested_reply ? <p>Reply: {commission.suggested_reply}</p> : null}
+      </section>
+    )
+  }
+
   return (
     <section className="admin-tab-panel">
       <div className="admin-list">
@@ -18,7 +45,9 @@ function AdminCommissionsTab({ commissions, onUpdateCommissionStatus }) {
                 <p>
                   Status: <span className={`badge status-${commission.status}`}>{commission.status}</span>
                 </p>
+                {commission.idea_text ? <p>Idea: {commission.idea_text}</p> : null}
                 <p>{commission.description}</p>
+                {renderStructuredBrief(commission)}
                 {commission.reference_images?.length > 0 ? (
                   <div className="thumbnail-row">
                     {commission.reference_images.map((imageUrl) => (

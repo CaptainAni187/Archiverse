@@ -26,6 +26,11 @@ const artworkImagesSchema = z
   .min(1, 'Images must contain between 1 and 5 items.')
   .max(5, 'Images must contain between 1 and 5 items.')
 
+const artworkTagsSchema = z
+  .array(z.preprocess(trimString, z.string().min(1).max(64)))
+  .max(20, 'Tags must contain at most 20 items.')
+  .default([])
+
 export const artworkPayloadSchema = z.object({
   title: nonEmptyString,
   price: z.coerce.number().finite().positive('Price must be greater than 0.'),
@@ -38,11 +43,37 @@ export const artworkPayloadSchema = z.object({
   category: z
     .preprocess((value) => String(value || '').trim().toLowerCase(), artworkCategorySchema)
     .default('canvas'),
+  tags: artworkTagsSchema,
+  instagram_url: z
+    .preprocess((value) => {
+      const trimmed = trimString(value)
+      return trimmed === '' ? undefined : trimmed
+    }, z.string().url().optional())
+    .transform((value) => value || ''),
+  featured_rank: z.coerce.number().int().min(0).optional().nullable(),
   images: artworkImagesSchema,
+})
+
+export const comboPayloadSchema = z.object({
+  title: nonEmptyString,
+  artwork_ids: z
+    .array(z.coerce.number().int().positive('A valid artwork id is required.'))
+    .min(2, 'A combo must contain between 2 and 5 artworks.')
+    .max(5, 'A combo must contain between 2 and 5 artworks.'),
+  discount_percent: z.coerce.number().int().min(1).max(50).default(10),
+  is_active: z.boolean().default(true),
 })
 
 export const orderCreationSchema = z.object({
   product_id: z.coerce.number().int().positive('A valid product_id is required.'),
+  product_ids: z
+    .array(z.coerce.number().int().positive('A valid product id is required.'))
+    .min(1)
+    .max(5)
+    .optional(),
+  combo_id: z.preprocess(trimString, z.string().uuid().optional()),
+  combo_title: optionalTrimmedString,
+  discount_percent: z.coerce.number().int().min(0).max(50).optional(),
   customer_name: nonEmptyString,
   customer_phone: nonEmptyString,
   customer_address: nonEmptyString,
@@ -76,6 +107,10 @@ export const commissionPayloadSchema = z.object({
   size: nonEmptyString,
   deadline: nonEmptyString,
   description: nonEmptyString,
+  idea_text: optionalTrimmedString,
+  structured_brief: z.record(z.string(), z.unknown()).optional().default({}),
+  clearer_brief: optionalTrimmedString,
+  suggested_reply: optionalTrimmedString,
   reference_images: z
     .array(z.string().trim().url('Each reference image must have a valid URL.'))
     .max(5, 'Reference images must contain at most 5 items.')
